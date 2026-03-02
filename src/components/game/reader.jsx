@@ -1,51 +1,98 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import SmartReview from './SmartReview';
+import ReadingQuiz from './ReadingQuiz';
+
+const CATEGORY_COLORS = [
+  'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300',
+  'bg-sky-50 text-sky-800 border-sky-200 hover:bg-sky-100 hover:border-sky-300',
+  'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300',
+  'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 hover:border-amber-300',
+  'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100 hover:border-rose-300',
+  'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100 hover:border-purple-300'
+];
+
+const CATEGORY_ICONS = ['📚', '🌍', '🔬', '🏛️', '💡', '🧠', '🌿', '🚀'];
+
+function getCategoryColor(index) {
+  return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
+}
+
+function getCategoryIcon(index) {
+  return CATEGORY_ICONS[index % CATEGORY_ICONS.length];
+}
 
 export default function Reader({ session }) {
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  // --- Selection State ---
+  const [allArticles, setAllArticles] = useState([]);
+  const [selectedSubject, setSelectedSubject] = useState(null);
+  const [selectedArticleId, setSelectedArticleId] = useState(null);
+  const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
 
+  // --- Reading State ---
   const [article, setArticle] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const [currentSegment, setCurrentSegment] = useState(0);
   const [xp, setXp] = useState(0);
   const [feedback, setFeedback] = useState("");
-
   const [gamePhase, setGamePhase] = useState('reading');
   const [collectedWords, setCollectedWords] = useState([]);
 
-  const categories = [
-    { id: 'biology_nature', name: 'Biology & Nature', icon: '🌿', color: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300' },
-    { id: 'geography_environment', name: 'Geography & Environment', icon: '🌍', color: 'bg-sky-50 text-sky-800 border-sky-200 hover:bg-sky-100 hover:border-sky-300' },
-    { id: 'technology_innovation', name: 'Technology & Innovation', icon: '🚀', color: 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300' },
-    { id: 'history_society', name: 'History & Society', icon: '🏛️', color: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 hover:border-amber-300' }
-  ];
-
+  // 1. Fetch metadata on mount
   useEffect(() => {
-    async function fetchArticle() {
-      if (!selectedCategory) return;
+    async function fetchMetadata() {
+      try {
+        setIsLoadingMetadata(true);
+        const { data, error } = await supabase
+          .from('articles')
+          .select('id, title, category, difficulty_level');
+
+        if (error) throw error;
+        setAllArticles(data || []);
+      } catch (err) {
+        console.error("Error fetching article metadata:", err);
+        setError("Could not load article catalogue.");
+      } finally {
+        setIsLoadingMetadata(false);
+      }
+    }
+    fetchMetadata();
+  }, []);
+
+  // Compute unique subjects
+  const uniqueSubjects = useMemo(() => {
+    // Filter out null/empty categories and get unique values
+    const categories = allArticles
+      .map(a => a.category)
+      .filter(c => c && c.trim() !== '');
+    return [...new Set(categories)].sort();
+  }, [allArticles]);
+
+  // Derived filtered list based on subject
+  const currentSubjectArticles = useMemo(() => {
+    if (!selectedSubject) return [];
+    return allArticles.filter(a => a.category === selectedSubject);
+  }, [allArticles, selectedSubject]);
+
+  // 2. Fetch full article when an ID is selected
+  useEffect(() => {
+    async function fetchFullArticle() {
+      if (!selectedArticleId) return;
 
       try {
         setLoading(true);
         setError(null);
+
         const { data, error } = await supabase
           .from('articles')
           .select('*')
-          .eq('category', selectedCategory)
-          .limit(1)
+          .eq('id', selectedArticleId)
           .single();
 
-        if (error) {
-          if (error.code === 'PGRST116') {
-            throw new Error(`No articles currently available in the "${selectedCategory}" category.`);
-          }
-          throw error;
-        }
+        if (error) throw error;
 
         setArticle(data);
-        setCurrentSegment(0);
         setFeedback("");
         setCollectedWords([]);
         setGamePhase('reading');
@@ -63,36 +110,29 @@ export default function Reader({ session }) {
         }
 
       } catch (err) {
-        console.error('Error fetching article:', err);
+        console.error('Error fetching full article:', err);
         setError(err.message);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchArticle();
-  }, [selectedCategory]);
+    fetchFullArticle();
+  }, [selectedArticleId]);
+
 
   const extractSentence = (text, clickedWord) => {
-    // Split text by period followed by space
     const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-
-    // Find the first sentence containing the raw clicked word
     const match = sentences.find(sentence =>
       sentence.toLowerCase().includes(clickedWord.toLowerCase())
     );
-
     return match ? match.trim() : text;
   };
 
   const handleWordClick = async (word, fullText) => {
-    // Clean the word of punctuation before checking
     const cleanWord = word.toLowerCase().replace(/[.,!?;:()"'`]/g, "");
-
-    // Prevent empty clicks
     if (!cleanWord) return;
 
-    // Check if already collected
     const isAlreadyCollected = collectedWords.some(item => item.word === cleanWord);
 
     if (isAlreadyCollected) {
@@ -109,32 +149,63 @@ export default function Reader({ session }) {
     setTimeout(() => setFeedback(""), 1500);
   };
 
-  const clearCategory = () => {
-    setSelectedCategory(null);
+  const goBackToSubjects = () => {
+    setSelectedSubject(null);
+  };
+
+  const clearSelection = () => {
+    setSelectedArticleId(null);
     setArticle(null);
     setError(null);
     setCollectedWords([]);
     setGamePhase('reading');
   };
 
-  if (!selectedCategory) {
+  // --- View 0: Initial Loading Metadata ---
+  if (isLoadingMetadata) {
     return (
-      <div className="max-w-5xl mx-auto p-6 bg-slate-50 min-h-[70vh] font-sans flex items-center justify-center">
-        <div className="w-full">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-extrabold text-slate-800 mb-4 tracking-tight">Select Your Research Subject</h2>
-            <p className="text-slate-500 text-xl font-medium">Choose an academic category to begin your IELTS reading mission.</p>
-          </div>
+      <div className="max-w-2xl mx-auto p-6 bg-slate-50 min-h-[70vh] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-blue-600 font-bold text-xl animate-pulse">Loading catalogue...</p>
+        </div>
+      </div>
+    );
+  }
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {categories.map((cat) => (
+  // --- View 1: Subject Selection (No subject selected yet) ---
+  if (!selectedSubject) {
+    if (uniqueSubjects.length === 0) {
+      return (
+        <div className="max-w-2xl mx-auto p-6 bg-slate-50 min-h-[70vh] flex flex-col justify-center">
+          <div className="bg-white border border-slate-200 p-8 rounded-2xl text-center shadow-sm">
+            <div className="text-4xl mb-4">📭</div>
+            <h2 className="text-slate-700 font-extrabold text-2xl mb-2">No Content Available</h2>
+            <p className="text-slate-500 mb-6 text-lg">There are currently no articles in the database.</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="max-w-5xl mx-auto p-6 bg-slate-50 min-h-[40vh] font-sans flex items-center justify-center">
+        <div className="w-full">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-extrabold text-slate-800 mb-2 tracking-tight">Select a Subject</h2>
+            <p className="text-slate-500 font-medium">Choose a category to find reading materials.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {uniqueSubjects.map((subject, index) => (
               <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.name)}
-                className={`flex flex-col items-center justify-center p-10 rounded-3xl border-2 transition-all duration-300 transform hover:-translate-y-2 shadow-sm hover:shadow-2xl ${cat.color}`}
+                key={subject}
+                onClick={() => setSelectedSubject(subject)}
+                className={`flex flex-col items-center justify-center p-8 rounded-2xl border-2 transition-all duration-300 transform hover:-translate-y-1 shadow-sm hover:shadow-xl ${getCategoryColor(index)}`}
               >
-                <span className="text-6xl mb-6 block drop-shadow-sm">{cat.icon}</span>
-                <span className="font-bold text-xl text-center leading-tight">{cat.name}</span>
+                <span className="text-4xl mb-4 block drop-shadow-sm">{getCategoryIcon(index)}</span>
+                <span className="font-bold text-xl text-center leading-tight">{subject}</span>
+                <span className="mt-2 text-sm opacity-75 font-semibold">
+                  {allArticles.filter(a => a.category === subject).length} Articles
+                </span>
               </button>
             ))}
           </div>
@@ -143,6 +214,54 @@ export default function Reader({ session }) {
     );
   }
 
+  // --- View 2: Article Selection (Subject selected, but no article ID) ---
+  if (selectedSubject && !selectedArticleId) {
+    return (
+      <div className="max-w-3xl mx-auto p-6 bg-slate-50 min-h-[50vh] font-sans">
+        <button
+          onClick={goBackToSubjects}
+          className="mb-6 flex items-center text-slate-500 hover:text-blue-600 font-bold transition-colors bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm hover:border-blue-300"
+        >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+          Back to Subjects
+        </button>
+
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-3xl font-extrabold text-slate-800">{selectedSubject} Articles</h2>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          {currentSubjectArticles.map(art => (
+            <button
+              key={art.id}
+              onClick={() => setSelectedArticleId(art.id)}
+              className="flex flex-col md:flex-row md:items-center justify-between bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all text-left"
+            >
+              <div>
+                <h3 className="text-xl font-bold text-slate-800 mb-1">{art.title}</h3>
+                <p className="text-sm text-slate-500 font-medium tracking-wide uppercase">Reading Module</p>
+              </div>
+
+              <div className="mt-4 md:mt-0 flex items-center">
+                <span className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${art.difficulty_level === 'Intermediate' ? 'bg-indigo-100 text-indigo-700' :
+                  art.difficulty_level === 'Advanced' ? 'bg-orange-100 text-orange-700' :
+                    art.difficulty_level === 'Beginner' ? 'bg-emerald-100 text-emerald-700' :
+                      'bg-blue-100 text-blue-700'
+                  }`}>
+                  {art.difficulty_level || 'General'}
+                </span>
+              </div>
+            </button>
+          ))}
+          {currentSubjectArticles.length === 0 && (
+            <p className="text-slate-500 text-center py-8">No articles found in this category.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // --- Loading Article View ---
   if (loading) {
     return (
       <div className="max-w-2xl mx-auto p-6 bg-slate-50 min-h-[70vh] font-sans flex items-center justify-center">
@@ -160,44 +279,57 @@ export default function Reader({ session }) {
         <div className="bg-red-50 border border-red-200 p-8 rounded-2xl text-center shadow-sm">
           <div className="text-4xl mb-4">⚠️</div>
           <h2 className="text-red-700 font-extrabold text-2xl mb-2">Mission Unavailable</h2>
-          <p className="text-red-600 mb-6 text-lg">{error || "No articles found in database."}</p>
+          <p className="text-red-600 mb-6 text-lg">{error || "Failed to load article."}</p>
           <button
-            onClick={clearCategory}
+            onClick={clearSelection}
             className="px-6 py-3 bg-white text-red-600 font-bold rounded-xl shadow border border-red-100 hover:bg-red-50 transition-colors"
           >
-            Choose Different Category
+            Go Back
           </button>
         </div>
       </div>
     );
   }
 
-  // Quiz Phase View
+  // --- Comprehension Phase View ---
+  if (gamePhase === 'comprehension') {
+    return (
+      <ReadingQuiz
+        questions={article?.content_data?.quiz || []}
+        article={article}
+        onComplete={() => setGamePhase('quiz')} // 'quiz' actually triggers SmartReview
+      />
+    );
+  }
+
+  // --- Smart Review Phase View ---
   if (gamePhase === 'quiz') {
     return (
       <SmartReview
         collectedWords={collectedWords}
         session={session}
-        onComplete={clearCategory}
+        onComplete={clearSelection}
       />
     );
   }
 
-  // Default Reading Phase
-  const fullArticleText = article.content_data.segments.map(seg => seg.text).join('\n\n');
+  // --- Reading Phase ---
+  const fullArticleText = typeof article?.content_data === 'string'
+    ? article.content_data
+    : article?.content_data?.text
+    || (article?.content_data?.segments ? article.content_data.segments.map(seg => seg.text).join('\n\n') : "No content available.");
 
   return (
     <div className="max-w-3xl mx-auto p-6 bg-slate-50 min-h-[70vh] font-sans">
-
-      {/* HUD (Heads-up Display) */}
+      {/* HUD */}
       <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
         <div className="flex items-center space-x-4">
           <button
-            onClick={clearCategory}
+            onClick={clearSelection}
             className="text-slate-400 hover:text-blue-600 transition-colors flex items-center font-bold text-sm bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 hover:border-blue-200 hover:bg-blue-50"
           >
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-            Change Category
+            Back to Articles
           </button>
         </div>
         <div className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-full font-bold shadow-sm transition-all text-lg flex items-center space-x-2">
@@ -234,7 +366,7 @@ export default function Reader({ session }) {
         </p>
       </div>
 
-      {/* Vocabulary Vault & Actions */}
+      {/* Vocabulary Vault */}
       <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
         <div className="bg-slate-800 p-6 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -262,10 +394,10 @@ export default function Reader({ session }) {
 
         <div className="p-6 bg-white border-t border-slate-100">
           <button
-            onClick={() => setGamePhase('quiz')}
+            onClick={() => setGamePhase('comprehension')}
             className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-extrabold text-lg rounded-2xl shadow-lg hover:-translate-y-1 hover:shadow-blue-500/40 transition-all"
           >
-            Finish & Start Smart Review 🚀
+            Finish & Take Quiz 🚀
           </button>
         </div>
       </div>

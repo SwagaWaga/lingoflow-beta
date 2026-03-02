@@ -26,7 +26,7 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                             body: JSON.stringify({
                                 contents: [{
                                     parts: [{
-                                        text: `Provide a short, simple, 1-sentence definition for the word "${item.word}" as it is used in this exact sentence: "${item.context}". Return ONLY the definition, nothing else.`
+                                        text: `Analyze the word '${item.word}' as it is used in this sentence: '${item.context}'. 1. Write a short, simple, 1-sentence definition. 2. Classify the word into EXACTLY ONE of these categories: 'Academic', 'Informal', 'Technical', 'Advanced', or 'Basic'. Return ONLY valid JSON in this exact format: {"definition": "your definition", "dna_type": "your category"} Do not include markdown formatting.`
                                     }]
                                 }]
                             })
@@ -34,26 +34,38 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
 
                         const data = await response.json();
                         let aiDefinition = "Definition not found";
+                        let aiDnaType = "Basic";
+
                         if (!import.meta.env.VITE_GEMINI_API_KEY) {
                             aiDefinition = "ENV ERROR: Vite cannot find your API key. Check .env.local";
                         } else if (data.error) {
                             aiDefinition = `GOOGLE ERROR: ${data.error.message}`;
                         } else if (data.candidates && data.candidates[0]) {
-                            aiDefinition = data.candidates[0].content.parts[0].text.trim();
+                            try {
+                                const cleanResponse = data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+                                const parsedData = JSON.parse(cleanResponse);
+                                aiDefinition = parsedData.definition;
+                                aiDnaType = parsedData.dna_type || "Basic";
+                            } catch (e) {
+                                console.error("Failed to parse Gemini JSON", e, data.candidates[0].content.parts[0].text);
+                                aiDefinition = data.candidates[0].content.parts[0].text.trim();
+                            }
                         } else {
                             aiDefinition = `UNKNOWN ERROR: ${JSON.stringify(data).substring(0, 50)}...`;
                         }
 
                         updatedWords.push({
                             ...item,
-                            definition: aiDefinition
+                            definition: aiDefinition,
+                            dna_type: aiDnaType
                         });
 
                     } catch (fetchErr) {
                         console.error(`Failed fetching definition for ${item.word}`, fetchErr);
                         updatedWords.push({
                             ...item,
-                            definition: "Failed to load definition."
+                            definition: "Failed to load definition.",
+                            dna_type: "Basic"
                         });
                     }
                 }
@@ -86,6 +98,7 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                 word: item.word,
                 context_sentence: item.context,
                 definition: item.definition,
+                dna_type: item.dna_type,
                 mastery_level: 1,
                 last_practiced: new Date().toISOString()
             }));
@@ -139,26 +152,44 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
             )}
 
             <div className="space-y-6 mb-10">
-                {reviewWords.map((item, idx) => (
-                    <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col group hover:border-blue-200 transition-colors">
-                        <div className="mb-4">
-                            <h3 className="text-2xl font-black text-blue-600 capitalize">{item.word}</h3>
-                            <p className="text-gray-600 italic mt-2 border-l-4 border-gray-200 pl-4 py-1.5 bg-gray-50 rounded-r-lg">
-                                "{item.context}"
-                            </p>
-                        </div>
+                {reviewWords.map((item, idx) => {
+                    const dnaColors = {
+                        Academic: 'bg-blue-100 text-blue-800',
+                        Technical: 'bg-purple-100 text-purple-800',
+                        Informal: 'bg-yellow-100 text-yellow-800',
+                        Advanced: 'bg-red-100 text-red-800',
+                        Basic: 'bg-green-100 text-green-800'
+                    };
+                    const badgeClass = dnaColors[item.dna_type] || dnaColors.Basic;
 
-                        <div className="flex flex-col">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Definition / Translation notes</label>
-                            <input
-                                type="text"
-                                value={item.definition}
-                                onChange={(e) => handleDefinitionChange(idx, e.target.value)}
-                                className="w-full bg-blue-50/50 border border-blue-100 rounded-xl px-4 py-3 text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                            />
+                    return (
+                        <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col group hover:border-blue-200 transition-colors">
+                            <div className="mb-4">
+                                <div className="flex items-center space-x-3 mb-2">
+                                    <h3 className="text-2xl font-black text-blue-600 capitalize">{item.word}</h3>
+                                    {item.dna_type && (
+                                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${badgeClass}`}>
+                                            {item.dna_type}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-gray-600 italic mt-2 border-l-4 border-gray-200 pl-4 py-1.5 bg-gray-50 rounded-r-lg">
+                                    "{item.context}"
+                                </p>
+                            </div>
+
+                            <div className="flex flex-col">
+                                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Definition / Translation notes</label>
+                                <input
+                                    type="text"
+                                    value={item.definition}
+                                    onChange={(e) => handleDefinitionChange(idx, e.target.value)}
+                                    className="w-full bg-blue-50/50 border border-blue-100 rounded-xl px-4 py-3 text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                />
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             <button

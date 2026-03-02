@@ -2,132 +2,152 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 export default function Admin() {
-    const [jsonInput, setJsonInput] = useState('');
-    const [status, setStatus] = useState({ type: '', message: '' });
-    const [isPublishing, setIsPublishing] = useState(false);
+    const [title, setTitle] = useState('');
+    const [category, setCategory] = useState('Life Sciences & Biology');
+    const [difficulty, setDifficulty] = useState('Advanced');
+    const [content, setContent] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [statusMessage, setStatusMessage] = useState('');
 
-    const handlePublish = async () => {
-        setStatus({ type: '', message: '' });
-
-        if (!jsonInput.trim()) {
-            setStatus({ type: 'error', message: 'Please paste article JSON data before publishing.' });
-            return;
-        }
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        setStatusMessage('');
 
         try {
-            setIsPublishing(true);
-
-            // Parse the JSON input
-            const articleData = JSON.parse(jsonInput);
-
-            // Validate the minimum required fields
-            if (!articleData.title || !articleData.content_data) {
-                throw new Error('Your JSON is missing required fields. Please ensure "title" and "content_data" exist.');
+            let formattedContent;
+            try {
+                // Try to parse the pasted text as JSON
+                formattedContent = JSON.parse(content);
+            } catch (e) {
+                // If it fails (it's just plain text), wrap it in our standard format
+                // Ensuring it maintains the 'segments' array expected by reader.jsx
+                formattedContent = {
+                    segments: content.split('\n').filter(p => p.trim()).map(text => ({ text: text.trim() })),
+                    quiz: []
+                };
             }
 
-            // Prepare payload
-            const payload = {
-                title: articleData.title,
-                category: articleData.category || 'General',
-                difficulty_level: articleData.difficulty_level || 'Beginner',
-                content_data: articleData.content_data
-            };
-
-            if (articleData.id) {
-                payload.id = articleData.id;
-            }
-
-            // Use Supabase client (auth state automatically provided by session)
-            const { data, error } = await supabase
+            const { error } = await supabase
                 .from('articles')
-                .insert([payload])
-                .select();
+                .insert([{ title, category, difficulty_level: difficulty, content_data: formattedContent }]);
 
             if (error) {
-                throw error;
-            }
-
-            // Handle Success
-            setStatus({
-                type: 'success',
-                message: `Article "${payload.title}" published successfully!${data && data[0] && data[0].id ? ` (ID: ${data[0].id})` : ''}`
-            });
-            setJsonInput('');
-
-        } catch (err) {
-            console.error('Publish error:', err);
-            if (err instanceof SyntaxError) {
-                setStatus({ type: 'error', message: 'Invalid JSON format. Please check your syntax.' });
+                setStatusMessage(error.message);
             } else {
-                setStatus({ type: 'error', message: err.message || 'An error occurred during publishing.' });
+                setStatusMessage("✅ Article uploaded successfully!");
+                setTitle('');
+                setCategory('Life Sciences & Biology');
+                setDifficulty('Advanced');
+                setContent('');
             }
+        } catch (err) {
+            setStatusMessage(err.message || 'An error occurred during publishing.');
         } finally {
-            setIsPublishing(false);
+            setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="w-full max-w-4xl bg-white shadow-xl rounded-2xl p-8 border border-gray-100 relative overflow-hidden">
+        <div className="w-full max-w-4xl mx-auto my-10 bg-white shadow-xl rounded-2xl p-8 border border-gray-100 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-indigo-500"></div>
-            <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center space-x-2">
-                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                <span>Admin Dashboard - Article Upload</span>
+            <h2 className="text-2xl font-bold text-gray-800 mb-8 flex items-center space-x-2">
+                <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                <span>Upload Article</span>
             </h2>
 
-            <div className="mb-6">
-                <label htmlFor="json-input" className="block text-sm font-bold text-gray-700 mb-2">
-                    Article JSON Payload
-                </label>
-                <textarea
-                    id="json-input"
-                    rows="14"
-                    className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 text-gray-800 font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-inner"
-                    placeholder={`{\n  "title": "My New Article",\n  "category": "Travel",\n  "difficulty_level": "Intermediate",\n  "content_data": {\n    "segments": [],\n    "vocabulary": []\n  }\n}`}
-                    value={jsonInput}
-                    onChange={(e) => setJsonInput(e.target.value)}
-                    disabled={isPublishing}
-                ></textarea>
-            </div>
-
-            {status.message && (
-                <div className={`mb-6 p-4 rounded-xl border-l-4 font-medium animate-fade-in ${status.type === 'error'
-                    ? 'bg-red-50 text-red-700 border-red-500'
-                    : 'bg-green-50 text-green-700 border-green-500'
-                    }`}>
-                    <div className="flex items-center space-x-2">
-                        {status.type === 'error' ? (
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        ) : (
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        )}
-                        <span>{status.message}</span>
-                    </div>
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <div>
+                    <label htmlFor="title" className="block text-sm font-bold text-gray-700 mb-2">Title</label>
+                    <input
+                        id="title"
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm"
+                        placeholder="Article Title"
+                        required
+                        disabled={isSubmitting}
+                    />
                 </div>
-            )}
 
-            <div className="flex justify-end">
-                <button
-                    onClick={handlePublish}
-                    disabled={isPublishing}
-                    className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg transition-all duration-300 transform ${isPublishing
-                        ? 'bg-blue-400 cursor-not-allowed scale-100'
-                        : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-500/30 hover:-translate-y-1'
-                        }`}
-                >
-                    {isPublishing ? (
-                        <span className="flex items-center space-x-2">
-                            <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            <span>Publishing...</span>
-                        </span>
-                    ) : (
-                        'Publish to Database'
+                <div>
+                    <label htmlFor="category" className="block text-sm font-bold text-gray-700 mb-2">Category</label>
+                    <select
+                        id="category"
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm appearance-none"
+                        disabled={isSubmitting}
+                    >
+                        <option value="Life Sciences & Biology">Life Sciences & Biology</option>
+                        <option value="Technology & Innovation">Technology & Innovation</option>
+                        <option value="Global Geography & Environment">Global Geography & Environment</option>
+                        <option value="History & Archaeology">History & Archaeology</option>
+                        <option value="Psychology & Sociology">Psychology & Sociology</option>
+                        <option value="Arts & Culture">Arts & Culture</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label htmlFor="difficulty" className="block text-sm font-bold text-gray-700 mb-2">Difficulty</label>
+                    <select
+                        id="difficulty"
+                        value={difficulty}
+                        onChange={(e) => setDifficulty(e.target.value)}
+                        className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm appearance-none"
+                        disabled={isSubmitting}
+                    >
+                        <option value="Intermediate">Intermediate</option>
+                        <option value="Advanced">Advanced</option>
+                        <option value="IELTS Academic">IELTS Academic</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label htmlFor="content" className="block text-sm font-bold text-gray-700 mb-2">Content</label>
+                    <textarea
+                        id="content"
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                        rows="12"
+                        className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm"
+                        placeholder="Paste the full article content here..."
+                        required
+                        disabled={isSubmitting}
+                    ></textarea>
+                </div>
+
+                <div className="pt-4 flex flex-col items-end">
+                    <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg transition-all duration-300 transform ${isSubmitting
+                            ? 'bg-blue-400 cursor-not-allowed scale-100'
+                            : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-500/30 hover:-translate-y-1'
+                            }`}
+                    >
+                        {isSubmitting ? (
+                            <span className="flex items-center space-x-2">
+                                <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span>Publishing...</span>
+                            </span>
+                        ) : 'Publish Article'}
+                    </button>
+
+                    {statusMessage && (
+                        <div className={`mt-6 w-full p-4 rounded-xl border-l-4 font-medium animate-fade-in ${statusMessage.startsWith('✅')
+                            ? 'bg-green-50 text-green-700 border-green-500'
+                            : 'bg-red-50 text-red-700 border-red-500'
+                            }`}>
+                            {statusMessage}
+                        </div>
                     )}
-                </button>
-            </div>
-
+                </div>
+            </form>
         </div>
     );
 }

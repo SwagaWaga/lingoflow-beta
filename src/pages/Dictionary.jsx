@@ -56,6 +56,27 @@ export default function Dictionary({ session }) {
         return { emoji: '🌱', title: 'Seed', color: 'bg-green-100 text-green-800 border-green-200' };
     };
 
+    const calculateDNAStats = (words) => {
+        const stats = {
+            Academic: 0,
+            Technical: 0,
+            Informal: 0,
+            Advanced: 0,
+            Basic: 0
+        };
+
+        words.forEach(word => {
+            const dna = word.dna_type || 'Basic';
+            if (stats[dna] !== undefined) {
+                stats[dna]++;
+            } else {
+                stats.Basic++;
+            }
+        });
+
+        return stats;
+    };
+
     if (loading) {
         return (
             <div className="max-w-6xl mx-auto p-6 flex items-center justify-center min-h-[50vh]">
@@ -75,10 +96,20 @@ export default function Dictionary({ session }) {
         );
     }
 
+    const dnaStats = calculateDNAStats(vaultWords);
+
+    const dnaCategories = [
+        { key: 'Academic', color: 'bg-blue-500', bg: 'bg-blue-100', icon: '🎓' },
+        { key: 'Technical', color: 'bg-purple-500', bg: 'bg-purple-100', icon: '⚙️' },
+        { key: 'Advanced', color: 'bg-red-500', bg: 'bg-red-100', icon: '🔥' },
+        { key: 'Informal', color: 'bg-yellow-400', bg: 'bg-yellow-100', icon: '🗣️' },
+        { key: 'Basic', color: 'bg-green-500', bg: 'bg-green-100', icon: '🌱' },
+    ];
+
     return (
         <div className="max-w-6xl mx-auto p-6 font-sans">
             {/* Gamified Banner */}
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 mb-10 text-white shadow-xl flex flex-col md:flex-row items-center justify-between">
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 mb-8 text-white shadow-xl flex flex-col md:flex-row items-center justify-between">
                 <div>
                     <h1 className="text-4xl font-extrabold mb-2 tracking-tight">Your Dictionary Vault</h1>
                     <p className="text-indigo-100 text-lg font-medium opacity-90">Watch your vocabulary grow and evolve over time.</p>
@@ -88,6 +119,44 @@ export default function Dictionary({ session }) {
                     <span className="text-5xl font-black drop-shadow-md">⚡ {powerScore}</span>
                 </div>
             </div>
+
+            {/* Vocabulary DNA Map */}
+            {vaultWords.length > 0 && (
+                <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 mb-10">
+                    <div className="mb-6 flex items-center justify-between">
+                        <div>
+                            <h2 className="text-2xl font-bold text-slate-800 flex items-center">
+                                <span className="mr-2">🧬</span> Vocabulary DNA Map
+                            </h2>
+                            <p className="text-slate-500 font-medium">Your linguistic profile based on collected words.</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                        {dnaCategories.map(cat => {
+                            const count = dnaStats[cat.key];
+                            const percentage = vaultWords.length > 0 ? (count / vaultWords.length) * 100 : 0;
+
+                            return (
+                                <div key={cat.key} className="flex flex-col">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="font-bold text-slate-700 text-sm flex items-center">
+                                            <span className="mr-1">{cat.icon}</span> {cat.key}
+                                        </span>
+                                        <span className="text-slate-500 text-xs font-bold bg-slate-100 px-2 py-0.5 rounded-full">{count}</span>
+                                    </div>
+                                    <div className={`w-full h-3 rounded-full ${cat.bg} overflow-hidden`}>
+                                        <div
+                                            className={`h-full ${cat.color} rounded-full transition-all duration-1000 ease-out`}
+                                            style={{ width: `${percentage}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {vaultWords.length === 0 ? (
                 <div className="bg-white p-12 rounded-3xl text-center shadow-lg border border-slate-100">
