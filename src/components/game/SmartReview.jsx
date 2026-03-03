@@ -8,78 +8,15 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        async function fetchGeminiDefinitions() {
-            if (!collectedWords || collectedWords.length === 0) {
-                setLoading(false);
-                return;
-            }
-
-            try {
-                setLoading(true);
-                const updatedWords = [];
-
-                for (const item of collectedWords) {
-                    try {
-                        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                contents: [{
-                                    parts: [{
-                                        text: `Analyze the word '${item.word}' as it is used in this sentence: '${item.context}'. 1. Write a short, simple, 1-sentence definition. 2. Classify the word into EXACTLY ONE of these categories: 'Academic', 'Informal', 'Technical', 'Advanced', or 'Basic'. Return ONLY valid JSON in this exact format: {"definition": "your definition", "dna_type": "your category"} Do not include markdown formatting.`
-                                    }]
-                                }]
-                            })
-                        });
-
-                        const data = await response.json();
-                        let aiDefinition = "Definition not found";
-                        let aiDnaType = "Basic";
-
-                        if (!import.meta.env.VITE_GEMINI_API_KEY) {
-                            aiDefinition = "ENV ERROR: Vite cannot find your API key. Check .env.local";
-                        } else if (data.error) {
-                            aiDefinition = `GOOGLE ERROR: ${data.error.message}`;
-                        } else if (data.candidates && data.candidates[0]) {
-                            try {
-                                const cleanResponse = data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
-                                const parsedData = JSON.parse(cleanResponse);
-                                aiDefinition = parsedData.definition;
-                                aiDnaType = parsedData.dna_type || "Basic";
-                            } catch (e) {
-                                console.error("Failed to parse Gemini JSON", e, data.candidates[0].content.parts[0].text);
-                                aiDefinition = data.candidates[0].content.parts[0].text.trim();
-                            }
-                        } else {
-                            aiDefinition = `UNKNOWN ERROR: ${JSON.stringify(data).substring(0, 50)}...`;
-                        }
-
-                        updatedWords.push({
-                            ...item,
-                            definition: aiDefinition,
-                            dna_type: aiDnaType
-                        });
-
-                    } catch (fetchErr) {
-                        console.error(`Failed fetching definition for ${item.word}`, fetchErr);
-                        updatedWords.push({
-                            ...item,
-                            definition: "Failed to load definition.",
-                            dna_type: "Basic"
-                        });
-                    }
-                }
-
-                setReviewWords(updatedWords);
-            } catch (err) {
-                console.error("Error in Smart Review initialization:", err);
-                setError("Failed to initialize review session.");
-            } finally {
-                setLoading(false);
-            }
+        if (!collectedWords || collectedWords.length === 0) {
+            setLoading(false);
+            return;
         }
 
-        fetchGeminiDefinitions();
+        // Since Reader.jsx already fetches definitions and dna_types,
+        // we can just directly initialize our review state.
+        setReviewWords([...collectedWords]);
+        setLoading(false);
     }, [collectedWords]);
 
     const handleDefinitionChange = (index, newTerm) => {

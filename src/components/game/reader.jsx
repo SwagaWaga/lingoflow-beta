@@ -38,6 +38,7 @@ export default function Reader({ session }) {
   const [feedback, setFeedback] = useState("");
   const [gamePhase, setGamePhase] = useState('reading');
   const [collectedWords, setCollectedWords] = useState([]);
+  const [isAnalyzingWord, setIsAnalyzingWord] = useState(false);
 
   // 1. Fetch metadata on mount
   useEffect(() => {
@@ -133,6 +134,12 @@ export default function Reader({ session }) {
     const cleanWord = word.toLowerCase().replace(/[.,!?;:()"'`]/g, "");
     if (!cleanWord) return;
 
+    if (isAnalyzingWord) {
+      setFeedback("⏳ Please wait, AI is analyzing the previous word...");
+      setTimeout(() => setFeedback(""), 2000);
+      return;
+    }
+
     const isAlreadyCollected = collectedWords.some(item => item.word === cleanWord);
 
     if (isAlreadyCollected) {
@@ -143,10 +150,91 @@ export default function Reader({ session }) {
     }
 
     const contextSentence = extractSentence(fullText, word);
+    setIsAnalyzingWord(true);
+    setFeedback(`⏳ Analyzing: ${cleanWord}...`);
 
-    setCollectedWords(prev => [...prev, { word: cleanWord, context: contextSentence }]);
-    setFeedback(`✨ Collected: ${cleanWord}`);
-    setTimeout(() => setFeedback(""), 1500);
+    try {
+      // 1. Check Local Cache (Supabase)
+      let hasCache = false;
+      let aiDefinition = "";
+      let aiDnaType = "Basic";
+
+      if (session?.user?.id) {
+        const { data: cachedWord, error: dbErr } = await supabase
+          .from('user_vocabulary')
+          .select('definition, dna_type')
+          .eq('user_id', session.user.id)
+          .eq('word', cleanWord)
+          .maybeSingle();
+
+        if (cachedWord && cachedWord.definition && cachedWord.definition !== "Definition not found") {
+          aiDefinition = cachedWord.definition;
+          aiDnaType = cachedWord.dna_type || "Basic";
+          hasCache = true;
+        }
+      }
+
+      // 2. Call Gemini if not in cache
+      if (!hasCache) {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: `Analyze the word '${cleanWord}' as it is used in this sentence: '${contextSentence}'. 1. Write a short, simple, 1-sentence definition. 2. Classify the word into EXACTLY ONE of these categories: 'Academic', 'Informal', 'Technical', 'Advanced', or 'Basic'. Return ONLY valid JSON in this exact format: {"definition": "your definition", "dna_type": "your category"} Do not include markdown formatting.`
+              }]
+            }]
+          })
+        });
+
+        if (response.status === 429) {
+          setFeedback("The AI is thinking too fast! Please wait 30 seconds before analyzing another word.");
+          setTimeout(() => setFeedback(""), 4000);
+          setIsAnalyzingWord(false);
+          return; // Abort adding to collected list so they can try again
+        }
+
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(data.error.message);
+        }
+
+        if (data.candidates && data.candidates[0]) {
+          try {
+            const cleanResponse = data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
+            const parsedData = JSON.parse(cleanResponse);
+            aiDefinition = parsedData.definition;
+            aiDnaType = parsedData.dna_type || "Basic";
+          } catch (e) {
+            aiDefinition = data.candidates[0].content.parts[0].text.trim();
+          }
+        } else {
+          throw new Error("Invalid response");
+        }
+      }
+
+      setCollectedWords(prev => [...prev, {
+        word: cleanWord,
+        context: contextSentence,
+        definition: aiDefinition,
+        dna_type: aiDnaType
+      }]);
+
+      if (hasCache) {
+        setFeedback(`✨ Restored from Vault: ${cleanWord}`);
+      } else {
+        setFeedback(`✨ Analyzed & Collected: ${cleanWord}`);
+      }
+      setTimeout(() => setFeedback(""), 2000);
+
+    } catch (err) {
+      console.error("Analysis failed:", err);
+      setFeedback(`❌ Error analyzing ${cleanWord}`);
+      setTimeout(() => setFeedback(""), 2000);
+    } finally {
+      setIsAnalyzingWord(false);
+    }
   };
 
   const goBackToSubjects = () => {
@@ -164,10 +252,10 @@ export default function Reader({ session }) {
   // --- View 0: Initial Loading Metadata ---
   if (isLoadingMetadata) {
     return (
-      <div className="max-w-2xl mx-auto p-6 bg-slate-50 min-h-[70vh] flex items-center justify-center">
+      <div className="p-6 min-h-[70vh] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-blue-600 font-bold text-xl animate-pulse">Loading catalogue...</p>
+          <p className="text-blue-600 dark:text-blue-400 font-bold text-xl animate-pulse">Loading catalogue...</p>
         </div>
       </div>
     );
@@ -177,35 +265,37 @@ export default function Reader({ session }) {
   if (!selectedSubject) {
     if (uniqueSubjects.length === 0) {
       return (
-        <div className="max-w-2xl mx-auto p-6 bg-slate-50 min-h-[70vh] flex flex-col justify-center">
-          <div className="bg-white border border-slate-200 p-8 rounded-2xl text-center shadow-sm">
+        <div className="p-6 min-h-[70vh] flex flex-col justify-center">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-8 rounded-2xl text-center shadow-sm">
             <div className="text-4xl mb-4">📭</div>
-            <h2 className="text-slate-700 font-extrabold text-2xl mb-2">No Content Available</h2>
-            <p className="text-slate-500 mb-6 text-lg">There are currently no articles in the database.</p>
+            <h2 className="text-slate-700 dark:text-white font-extrabold text-2xl mb-2">No Content Available</h2>
+            <p className="text-slate-500 dark:text-slate-400 mb-6 text-lg">There are currently no articles in the database.</p>
           </div>
         </div>
       );
     }
 
     return (
-      <div className="max-w-5xl mx-auto p-6 bg-slate-50 min-h-[40vh] font-sans flex items-center justify-center">
+      <div className="p-8 font-sans">
         <div className="w-full">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-extrabold text-slate-800 mb-2 tracking-tight">Select a Subject</h2>
-            <p className="text-slate-500 font-medium">Choose a category to find reading materials.</p>
+          <div className="mb-8">
+            <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-1">Choose a Subject</h2>
+            <p className="text-slate-500 dark:text-slate-400 font-medium">Pick a topic you're curious about to find reading materials.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {uniqueSubjects.map((subject, index) => (
               <button
                 key={subject}
                 onClick={() => setSelectedSubject(subject)}
-                className={`flex flex-col items-center justify-center p-8 rounded-2xl border-2 transition-all duration-300 transform hover:-translate-y-1 shadow-sm hover:shadow-xl ${getCategoryColor(index)}`}
+                className={`group flex flex-col items-start justify-between p-7 rounded-2xl border-2 transition-all duration-300 ease-in-out cursor-pointer bg-white dark:bg-slate-800 hover:-translate-y-1.5 hover:shadow-xl hover:border-opacity-80 shadow-sm ${getCategoryColor(index)}`}
               >
-                <span className="text-4xl mb-4 block drop-shadow-sm">{getCategoryIcon(index)}</span>
-                <span className="font-bold text-xl text-center leading-tight">{subject}</span>
-                <span className="mt-2 text-sm opacity-75 font-semibold">
-                  {allArticles.filter(a => a.category === subject).length} Articles
-                </span>
+                <span className="text-4xl mb-4 block drop-shadow-sm transition-transform duration-300 group-hover:scale-110">{getCategoryIcon(index)}</span>
+                <div className="text-left w-full">
+                  <span className="font-black text-lg leading-tight block mb-1 dark:text-white">{subject}</span>
+                  <span className="text-sm font-semibold opacity-70 dark:text-slate-300">
+                    {allArticles.filter(a => a.category === subject).length} Articles
+                  </span>
+                </div>
               </button>
             ))}
           </div>
@@ -214,20 +304,20 @@ export default function Reader({ session }) {
     );
   }
 
-  // --- View 2: Article Selection (Subject selected, but no article ID) ---
   if (selectedSubject && !selectedArticleId) {
     return (
-      <div className="max-w-3xl mx-auto p-6 bg-slate-50 min-h-[50vh] font-sans">
+      <div className="p-8 font-sans">
         <button
           onClick={goBackToSubjects}
-          className="mb-6 flex items-center text-slate-500 hover:text-blue-600 font-bold transition-colors bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm hover:border-blue-300"
+          className="mb-6 flex items-center text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-bold transition-colors bg-slate-100 dark:bg-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-800 text-sm group"
         >
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+          <svg className="w-4 h-4 mr-2 group-hover:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
           Back to Subjects
         </button>
 
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-3xl font-extrabold text-slate-800">{selectedSubject} Articles</h2>
+        <div className="mb-6">
+          <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{selectedSubject}</h2>
+          <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">{currentSubjectArticles.length} article{currentSubjectArticles.length !== 1 ? 's' : ''} available</p>
         </div>
 
         <div className="flex flex-col gap-4">
@@ -235,26 +325,27 @@ export default function Reader({ session }) {
             <button
               key={art.id}
               onClick={() => setSelectedArticleId(art.id)}
-              className="flex flex-col md:flex-row md:items-center justify-between bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all text-left"
+              className="group flex flex-col md:flex-row md:items-center justify-between bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border-2 border-slate-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-lg transition-all duration-300 ease-in-out text-left hover:-translate-y-0.5"
             >
               <div>
-                <h3 className="text-xl font-bold text-slate-800 mb-1">{art.title}</h3>
-                <p className="text-sm text-slate-500 font-medium tracking-wide uppercase">Reading Module</p>
+                <h3 className="text-lg font-black text-slate-800 dark:text-white mb-1 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">{art.title}</h3>
+                <p className="text-sm text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide">Reading Module</p>
               </div>
 
-              <div className="mt-4 md:mt-0 flex items-center">
-                <span className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${art.difficulty_level === 'Intermediate' ? 'bg-indigo-100 text-indigo-700' :
-                  art.difficulty_level === 'Advanced' ? 'bg-orange-100 text-orange-700' :
-                    art.difficulty_level === 'Beginner' ? 'bg-emerald-100 text-emerald-700' :
-                      'bg-blue-100 text-blue-700'
+              <div className="mt-4 md:mt-0 flex items-center space-x-3">
+                <span className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${art.difficulty_level === 'Intermediate' ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300' :
+                    art.difficulty_level === 'Advanced' ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300' :
+                      art.difficulty_level === 'Beginner' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' :
+                        'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
                   }`}>
                   {art.difficulty_level || 'General'}
                 </span>
+                <span className="text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity font-black">→</span>
               </div>
             </button>
           ))}
           {currentSubjectArticles.length === 0 && (
-            <p className="text-slate-500 text-center py-8">No articles found in this category.</p>
+            <p className="text-slate-500 dark:text-slate-400 text-center py-8">No articles found in this category.</p>
           )}
         </div>
       </div>
@@ -264,10 +355,10 @@ export default function Reader({ session }) {
   // --- Loading Article View ---
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto p-6 bg-slate-50 min-h-[70vh] font-sans flex items-center justify-center">
+      <div className="p-6 min-h-[70vh] font-sans flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-blue-600 font-bold text-xl animate-pulse">Loading mission...</p>
+          <p className="text-blue-600 dark:text-blue-400 font-bold text-xl animate-pulse">Loading mission...</p>
         </div>
       </div>
     );
@@ -275,14 +366,14 @@ export default function Reader({ session }) {
 
   if (error || !article) {
     return (
-      <div className="max-w-2xl mx-auto p-6 bg-slate-50 min-h-[70vh] font-sans flex flex-col justify-center">
-        <div className="bg-red-50 border border-red-200 p-8 rounded-2xl text-center shadow-sm">
+      <div className="p-6 min-h-[70vh] font-sans flex flex-col justify-center">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-8 rounded-2xl text-center shadow-sm">
           <div className="text-4xl mb-4">⚠️</div>
-          <h2 className="text-red-700 font-extrabold text-2xl mb-2">Mission Unavailable</h2>
-          <p className="text-red-600 mb-6 text-lg">{error || "Failed to load article."}</p>
+          <h2 className="text-red-700 dark:text-red-400 font-extrabold text-2xl mb-2">Mission Unavailable</h2>
+          <p className="text-red-600 dark:text-red-300 mb-6 text-lg">{error || "Failed to load article."}</p>
           <button
             onClick={clearSelection}
-            className="px-6 py-3 bg-white text-red-600 font-bold rounded-xl shadow border border-red-100 hover:bg-red-50 transition-colors"
+            className="px-6 py-3 bg-white dark:bg-slate-700 text-red-600 dark:text-red-300 font-bold rounded-xl shadow border border-red-100 dark:border-red-900/40 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
           >
             Go Back
           </button>
@@ -320,32 +411,32 @@ export default function Reader({ session }) {
     || (article?.content_data?.segments ? article.content_data.segments.map(seg => seg.text).join('\n\n') : "No content available.");
 
   return (
-    <div className="max-w-3xl mx-auto p-6 bg-slate-50 min-h-[70vh] font-sans">
+    <div className="max-w-3xl mx-auto p-6 min-h-[70vh] font-sans">
       {/* HUD */}
-      <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+      <div className="flex justify-between items-center mb-8 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
         <div className="flex items-center space-x-4">
           <button
             onClick={clearSelection}
-            className="text-slate-400 hover:text-blue-600 transition-colors flex items-center font-bold text-sm bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 hover:border-blue-200 hover:bg-blue-50"
+            className="text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center font-bold text-sm bg-slate-50 dark:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-600 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20"
           >
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             Back to Articles
           </button>
         </div>
-        <div className="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-full font-bold shadow-sm transition-all text-lg flex items-center space-x-2">
+        <div className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 px-4 py-2 rounded-full font-bold shadow-sm transition-all text-lg flex items-center space-x-2">
           <span>✨</span>
           <span>{xp} XP</span>
         </div>
       </div>
 
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">{article.title}</h1>
-        <span className="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">{article.category}</span>
+        <h1 className="text-3xl font-extrabold text-slate-800 dark:text-white tracking-tight">{article.title}</h1>
+        <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">{article.category}</span>
       </div>
 
       {/* Article Content */}
-      <div className="bg-white p-8 rounded-3xl shadow-lg mb-8 border-l-4 border-blue-500 relative transition-all">
-        <p className="text-xl leading-loose text-slate-700 whitespace-pre-wrap">
+      <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-lg mb-8 border-l-4 border-blue-500 relative transition-colors">
+        <p className="text-xl leading-loose text-slate-700 dark:text-slate-200 whitespace-pre-wrap">
           {fullArticleText.split(" ").map((word, i) => {
             const cleanCheckWord = word.toLowerCase().replace(/[.,!?;:()"'`]/g, "");
             const isCollected = collectedWords.some(item => item.word === cleanCheckWord);
@@ -355,8 +446,8 @@ export default function Reader({ session }) {
                 key={i}
                 onClick={() => handleWordClick(word, fullArticleText)}
                 className={`cursor-pointer rounded px-1.5 py-0.5 transition-colors inline-block mx-0.5 ${isCollected
-                  ? 'bg-yellow-200 text-yellow-900 border-b-2 border-yellow-400 font-medium'
-                  : 'hover:bg-blue-100 hover:text-blue-800'
+                  ? 'bg-yellow-200 dark:bg-yellow-700/60 text-yellow-900 dark:text-yellow-100 border-b-2 border-yellow-400 dark:border-yellow-600 font-medium'
+                  : 'hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-800 dark:hover:text-blue-200'
                   }`}
               >
                 {word}
@@ -367,24 +458,24 @@ export default function Reader({ session }) {
       </div>
 
       {/* Vocabulary Vault */}
-      <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
-        <div className="bg-slate-800 p-6 flex items-center justify-between">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl overflow-hidden border border-slate-100 dark:border-slate-700 transition-colors">
+        <div className="bg-slate-800 dark:bg-slate-900 p-6 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <span className="text-3xl">🗃️</span>
             <h2 className="text-white font-bold text-xl">Vocabulary Vault</h2>
           </div>
-          <span className="bg-slate-700 text-indigo-300 font-bold px-4 py-1.5 rounded-full border border-slate-600">
+          <span className="bg-slate-700 dark:bg-slate-800 text-indigo-300 font-bold px-4 py-1.5 rounded-full border border-slate-600">
             {collectedWords.length} Words Collected
           </span>
         </div>
 
-        <div className="p-6 bg-slate-50 min-h-[100px]">
+        <div className="p-6 bg-slate-50 dark:bg-slate-800/50 min-h-[100px]">
           {collectedWords.length === 0 ? (
-            <p className="text-slate-400 text-center italic py-4">Click any word in the article you want to learn to add it to your vault.</p>
+            <p className="text-slate-400 dark:text-slate-500 text-center italic py-4">Click any word in the article you want to learn to add it to your vault.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {collectedWords.map((item, idx) => (
-                <span key={idx} className="bg-white border border-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl shadow-sm hover:border-blue-300 hover:text-blue-600 transition-colors cursor-default" title={item.context}>
+                <span key={idx} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold px-4 py-2 rounded-xl shadow-sm hover:border-blue-300 hover:text-blue-600 transition-colors cursor-default" title={item.context}>
                   {item.word}
                 </span>
               ))}
@@ -392,7 +483,7 @@ export default function Reader({ session }) {
           )}
         </div>
 
-        <div className="p-6 bg-white border-t border-slate-100">
+        <div className="p-6 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700">
           <button
             onClick={() => setGamePhase('comprehension')}
             className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-extrabold text-lg rounded-2xl shadow-lg hover:-translate-y-1 hover:shadow-blue-500/40 transition-all"

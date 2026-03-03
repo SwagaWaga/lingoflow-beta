@@ -56,6 +56,23 @@ export default function Dictionary({ session }) {
         return { emoji: '🌱', title: 'Seed', color: 'bg-green-100 text-green-800 border-green-200' };
     };
 
+    const calculateAcademicRank = (academicCount) => {
+        if (academicCount < 25) return { title: "Initiate", current: academicCount, next: 25, barColor: "bg-gray-400", textColor: "text-gray-600" };
+        if (academicCount < 75) return { title: "Novice Scholar", current: academicCount, next: 75, barColor: "bg-amber-600", textColor: "text-amber-700" };
+        if (academicCount < 150) return { title: "Undergraduate", current: academicCount, next: 150, barColor: "bg-slate-400", textColor: "text-slate-600" };
+        if (academicCount < 300) return { title: "Graduate Researcher", current: academicCount, next: 300, barColor: "bg-yellow-400", textColor: "text-yellow-600" };
+        if (academicCount < 500) return { title: "Doctoral Candidate", current: academicCount, next: 500, barColor: "bg-emerald-500", textColor: "text-emerald-600" };
+        if (academicCount < 750) return { title: "Tenured Professor", current: academicCount, next: 750, barColor: "bg-blue-500", textColor: "text-blue-600" };
+        if (academicCount < 1000) return { title: "Department Head", current: academicCount, next: 1000, barColor: "bg-purple-500", textColor: "text-purple-600" };
+        return {
+            title: "Academic Laureate",
+            current: academicCount,
+            next: "MAX",
+            barColor: "bg-gradient-to-r from-red-500 via-yellow-500 to-purple-500 bg-[length:200%_auto] animate-pulse",
+            textColor: "text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-purple-500"
+        };
+    };
+
     const calculateDNAStats = (words) => {
         const stats = {
             Academic: 0,
@@ -97,6 +114,12 @@ export default function Dictionary({ session }) {
     }
 
     const dnaStats = calculateDNAStats(vaultWords);
+    const academicWordCount = vaultWords.filter(w => w.dna_type === 'Academic').length;
+    const currentRank = calculateAcademicRank(academicWordCount);
+    // Handle "MAX" state
+    const rankProgressPercentage = currentRank.next === "MAX"
+        ? 100
+        : (currentRank.current / currentRank.next) * 100;
 
     const dnaCategories = [
         { key: 'Academic', color: 'bg-blue-500', bg: 'bg-blue-100', icon: '🎓' },
@@ -109,14 +132,36 @@ export default function Dictionary({ session }) {
     return (
         <div className="max-w-6xl mx-auto p-6 font-sans">
             {/* Gamified Banner */}
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 mb-8 text-white shadow-xl flex flex-col md:flex-row items-center justify-between">
-                <div>
-                    <h1 className="text-4xl font-extrabold mb-2 tracking-tight">Your Dictionary Vault</h1>
-                    <p className="text-indigo-100 text-lg font-medium opacity-90">Watch your vocabulary grow and evolve over time.</p>
-                </div>
-                <div className="mt-6 md:mt-0 bg-white/10 backdrop-blur-sm border border-white/20 px-8 py-4 rounded-2xl text-center shadow-inner">
-                    <span className="block text-indigo-100 text-sm font-bold uppercase tracking-widest mb-1">Vocabulary Power</span>
-                    <span className="text-5xl font-black drop-shadow-md">⚡ {powerScore}</span>
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 mb-8 text-white shadow-xl">
+                <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
+                    <div className="flex-1">
+                        <h1 className="text-4xl font-extrabold mb-2 tracking-tight">Your Dictionary Vault</h1>
+                        <p className="text-indigo-100 text-lg font-medium opacity-90 mb-6">Watch your vocabulary grow and evolve over time.</p>
+
+                        {/* Rank Progress */}
+                        <div className="bg-white/10 backdrop-blur-sm border border-white/20 p-5 rounded-2xl w-full max-w-lg">
+                            <div className="flex justify-between items-center mb-2">
+                                <h2 className="font-bold text-lg flex items-center">
+                                    <span className="mr-2">🎓</span>
+                                    <span className={currentRank.textColor}>{currentRank.title}</span>
+                                </h2>
+                                <span className="text-indigo-200 font-bold text-sm">
+                                    {currentRank.current} / {currentRank.next === "MAX" ? '∞' : currentRank.next} Academic Words
+                                </span>
+                            </div>
+                            <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden">
+                                <div
+                                    className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(255,255,255,0.5)] ${currentRank.barColor}`}
+                                    style={{ width: `${rankProgressPercentage}%` }}
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white/10 backdrop-blur-sm border border-white/20 px-10 py-8 rounded-3xl text-center shadow-inner mt-4 lg:mt-0">
+                        <span className="block text-indigo-100 text-sm font-bold uppercase tracking-widest mb-2">Vocabulary Power</span>
+                        <span className="text-6xl font-black drop-shadow-md">⚡ {powerScore}</span>
+                    </div>
                 </div>
             </div>
 
