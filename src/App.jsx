@@ -66,7 +66,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex flex-col items-center relative transition-colors duration-300">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex flex-col items-center relative overflow-hidden transition-colors duration-300">
       <FloatingWords />
 
       {!session ? (
@@ -95,8 +95,8 @@ function App() {
                       key={key}
                       onClick={() => setCurrentView(key)}
                       className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${currentView === key
-                          ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
-                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                        ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                         }`}
                     >
                       {label}
