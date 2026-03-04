@@ -6,6 +6,7 @@ export default function Admin() {
     const [category, setCategory] = useState('Life Sciences & Biology');
     const [difficulty, setDifficulty] = useState('Advanced');
     const [content, setContent] = useState('');
+    const [dnaMap, setDnaMap] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
 
@@ -28,9 +29,20 @@ export default function Admin() {
                 };
             }
 
+            let parsedMap = {};
+            if (dnaMap.trim()) {
+                try {
+                    parsedMap = JSON.parse(dnaMap);
+                } catch (e) {
+                    setStatusMessage('❌ Invalid JSON format in Vocabulary DNA Map. Please fix it before submitting.');
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
             const { error } = await supabase
                 .from('articles')
-                .insert([{ title, category, difficulty_level: difficulty, content_data: formattedContent }]);
+                .insert([{ title, category, difficulty_level: difficulty, content_data: formattedContent, dna_map: parsedMap }]);
 
             if (error) {
                 setStatusMessage(error.message);
@@ -40,6 +52,7 @@ export default function Admin() {
                 setCategory('Life Sciences & Biology');
                 setDifficulty('Advanced');
                 setContent('');
+                setDnaMap('');
             }
         } catch (err) {
             setStatusMessage(err.message || 'An error occurred during publishing.');
@@ -102,6 +115,19 @@ export default function Admin() {
                         <option value="Advanced">Advanced</option>
                         <option value="IELTS Academic">IELTS Academic</option>
                     </select>
+                </div>
+
+                <div>
+                    <label htmlFor="dnaMap" className="block text-sm font-bold text-gray-700 mb-2">Vocabulary DNA Map (JSON format)</label>
+                    <textarea
+                        id="dnaMap"
+                        value={dnaMap}
+                        onChange={(e) => setDnaMap(e.target.value)}
+                        rows="4"
+                        className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-mono text-sm shadow-sm"
+                        placeholder='{"intricate": "Academic", "metabolism": "Technical"}'
+                        disabled={isSubmitting}
+                    ></textarea>
                 </div>
 
                 <div>

@@ -1,11 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import AchievementsBoard from '../components/AchievementsBoard';
 
-export default function Dictionary({ session }) {
+export default function Dictionary({ session, preferredAccent = 'US', dailyStreak = 0 }) {
     const [vaultWords, setVaultWords] = useState([]);
     const [loading, setLoading] = useState(true);
     const [powerScore, setPowerScore] = useState(0);
     const [error, setError] = useState(null);
+    const audioRef = useRef(null);
+
+    // Pause audio when leaving the Dictionary
+    useEffect(() => {
+        return () => {
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
+            }
+        };
+    }, []);
+
+    const handlePlayAudio = (url) => {
+        if (!url) return;
+
+        // Stop any currently playing audio
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+        }
+
+        // Play the new audio
+        audioRef.current = new Audio(url);
+        audioRef.current.play().catch(err => console.error("Audio playback failed:", err));
+    };
 
     useEffect(() => {
         async function fetchVocabulary() {
@@ -54,6 +80,14 @@ export default function Dictionary({ session }) {
         if (level === 3) return { emoji: '🌳', title: 'Strong', color: 'bg-teal-100 text-teal-800 border-teal-200' };
         if (level >= 4) return { emoji: '🔥', title: 'Mastered', color: 'bg-orange-100 text-orange-800 border-orange-200' };
         return { emoji: '🌱', title: 'Seed', color: 'bg-green-100 text-green-800 border-green-200' };
+    };
+
+    const getAccentBadge = (url) => {
+        if (!url) return null;
+        if (url.includes('-uk.')) return 'UK';
+        if (url.includes('-us.')) return 'US';
+        if (url.includes('-au.')) return 'AU';
+        return 'Global';
     };
 
     const calculateAcademicRank = (academicCount) => {
@@ -130,23 +164,23 @@ export default function Dictionary({ session }) {
     ];
 
     return (
-        <div className="max-w-6xl mx-auto p-6 font-sans">
+        <div className="max-w-6xl mx-auto p-4 md:p-6 font-sans">
             {/* Gamified Banner */}
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 mb-8 text-white shadow-xl">
-                <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
-                    <div className="flex-1">
-                        <h1 className="text-4xl font-extrabold mb-2 tracking-tight">Your Dictionary Vault</h1>
-                        <p className="text-indigo-100 text-lg font-medium opacity-90 mb-6">Watch your vocabulary grow and evolve over time.</p>
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl md:rounded-3xl p-5 md:p-8 mb-6 md:mb-8 text-white shadow-xl">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 md:gap-6">
+                    <div className="flex-1 min-w-0">
+                        <h1 className="text-2xl md:text-4xl font-extrabold mb-1 md:mb-2 tracking-tight">Your Dictionary Vault</h1>
+                        <p className="text-indigo-100 text-sm md:text-lg font-medium opacity-90 mb-4 md:mb-6">Watch your vocabulary grow and evolve over time.</p>
 
                         {/* Rank Progress */}
-                        <div className="bg-white/10 backdrop-blur-sm border border-white/20 p-5 rounded-2xl w-full max-w-lg">
+                        <div className="bg-white/10 backdrop-blur-sm border border-white/20 p-4 md:p-5 rounded-2xl w-full max-w-lg">
                             <div className="flex justify-between items-center mb-2">
-                                <h2 className="font-bold text-lg flex items-center">
+                                <h2 className="font-bold text-base md:text-lg flex items-center">
                                     <span className="mr-2">🎓</span>
                                     <span className={currentRank.textColor}>{currentRank.title}</span>
                                 </h2>
-                                <span className="text-indigo-200 font-bold text-sm">
-                                    {currentRank.current} / {currentRank.next === "MAX" ? '∞' : currentRank.next} Academic Words
+                                <span className="text-indigo-200 font-bold text-xs md:text-sm">
+                                    {currentRank.current} / {currentRank.next === "MAX" ? '∞' : currentRank.next} Words
                                 </span>
                             </div>
                             <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden">
@@ -158,22 +192,29 @@ export default function Dictionary({ session }) {
                         </div>
                     </div>
 
-                    <div className="bg-white/10 backdrop-blur-sm border border-white/20 px-10 py-8 rounded-3xl text-center shadow-inner mt-4 lg:mt-0">
-                        <span className="block text-indigo-100 text-sm font-bold uppercase tracking-widest mb-2">Vocabulary Power</span>
-                        <span className="text-6xl font-black drop-shadow-md">⚡ {powerScore}</span>
+                    <div className="bg-white/10 backdrop-blur-sm border border-white/20 px-6 md:px-10 py-5 md:py-8 rounded-2xl md:rounded-3xl text-center shadow-inner w-full lg:w-auto">
+                        <span className="block text-indigo-100 text-xs md:text-sm font-bold uppercase tracking-widest mb-1 md:mb-2">Vocabulary Power</span>
+                        <span className="text-4xl md:text-6xl font-black drop-shadow-md">⚡ {powerScore}</span>
                     </div>
                 </div>
             </div>
 
+            {/* Achievements Board */}
+            <AchievementsBoard userData={{
+                totalWords: vaultWords.length,
+                dnaCounts: dnaStats,
+                streak: dailyStreak
+            }} />
+
             {/* Vocabulary DNA Map */}
             {vaultWords.length > 0 && (
-                <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 mb-10">
+                <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 shadow-sm border border-slate-200 dark:border-slate-700 mb-10 transition-colors">
                     <div className="mb-6 flex items-center justify-between">
                         <div>
-                            <h2 className="text-2xl font-bold text-slate-800 flex items-center">
+                            <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center">
                                 <span className="mr-2">🧬</span> Vocabulary DNA Map
                             </h2>
-                            <p className="text-slate-500 font-medium">Your linguistic profile based on collected words.</p>
+                            <p className="text-slate-500 dark:text-slate-400 font-medium">Your linguistic profile based on collected words.</p>
                         </div>
                     </div>
 
@@ -185,10 +226,10 @@ export default function Dictionary({ session }) {
                             return (
                                 <div key={cat.key} className="flex flex-col">
                                     <div className="flex justify-between items-center mb-2">
-                                        <span className="font-bold text-slate-700 text-sm flex items-center">
+                                        <span className="font-bold text-slate-700 dark:text-slate-300 text-sm flex items-center">
                                             <span className="mr-1">{cat.icon}</span> {cat.key}
                                         </span>
-                                        <span className="text-slate-500 text-xs font-bold bg-slate-100 px-2 py-0.5 rounded-full">{count}</span>
+                                        <span className="text-slate-500 dark:text-slate-400 text-xs font-bold bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{count}</span>
                                     </div>
                                     <div className={`w-full h-3 rounded-full ${cat.bg} overflow-hidden`}>
                                         <div
@@ -204,21 +245,37 @@ export default function Dictionary({ session }) {
             )}
 
             {vaultWords.length === 0 ? (
-                <div className="bg-white p-12 rounded-3xl text-center shadow-lg border border-slate-100">
+                <div className="bg-white dark:bg-slate-800 p-12 rounded-3xl text-center shadow-lg border border-slate-100 dark:border-slate-700 transition-colors">
                     <span className="text-6xl mb-6 block">📭</span>
-                    <h3 className="text-2xl font-bold text-slate-800 mb-2">Your Vault is Empty</h3>
-                    <p className="text-slate-500 text-lg max-w-md mx-auto">Play a reading mission and collect words to see them grow here in your dictionary.</p>
+                    <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">Your Vault is Empty</h3>
+                    <p className="text-slate-500 dark:text-slate-400 text-lg max-w-md mx-auto">Play a reading mission and collect words to see them grow here in your dictionary.</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {vaultWords.map((wordObj) => {
                         const stage = getEvolutionStage(wordObj.mastery_level);
                         return (
-                            <div key={wordObj.id || wordObj.word} className="bg-white rounded-2xl p-6 shadow-md border border-slate-100 hover:shadow-xl transition-all transform hover:-translate-y-1 relative overflow-hidden group">
+                            <div key={wordObj.id || wordObj.word} className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-md border border-slate-100 dark:border-slate-700 hover:shadow-xl transition-all transform hover:-translate-y-1 relative overflow-hidden group">
                                 <div className="flex justify-between items-start mb-4">
-                                    <h3 className="text-2xl font-bold text-slate-800 capitalize tracking-tight group-hover:text-indigo-600 transition-colors">
-                                        {wordObj.word}
-                                    </h3>
+                                    <div className="flex items-center gap-3">
+                                        <h3 className="text-2xl font-bold text-slate-800 dark:text-white capitalize tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                            {wordObj.word}
+                                        </h3>
+                                        {wordObj.audio_url && (
+                                            <div className="flex items-center space-x-2">
+                                                <button
+                                                    onClick={() => handlePlayAudio(wordObj.audio_url)}
+                                                    className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-indigo-500 dark:text-slate-300 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-all flex items-center justify-center shadow-sm"
+                                                    title="Play Pronunciation"
+                                                >
+                                                    🔊
+                                                </button>
+                                                <span className="text-[10px] font-bold tracking-wider bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase ml-2">
+                                                    {getAccentBadge(wordObj.audio_url)}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
                                     <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border flex items-center space-x-1 ${stage.color}`}>
                                         <span>{stage.emoji}</span>
                                         <span>{stage.title}</span>
@@ -227,17 +284,17 @@ export default function Dictionary({ session }) {
 
                                 {wordObj.definition && (
                                     <div className="mb-4">
-                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-1">Definition</span>
-                                        <p className="text-slate-600 font-medium leading-snug">{wordObj.definition}</p>
+                                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Definition</span>
+                                        <p className="text-slate-600 dark:text-slate-300 font-medium leading-snug">{wordObj.definition}</p>
                                     </div>
                                 )}
 
-                                <div className="mt-auto pt-4 border-t border-slate-100">
-                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block mb-1 flex items-center">
+                                <div className="mt-auto pt-4 border-t border-slate-100 dark:border-slate-700">
+                                    <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1 flex items-center">
                                         <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                         Last Practiced
                                     </span>
-                                    <span className="text-slate-500 text-sm">{new Date(wordObj.last_practiced).toLocaleDateString()}</span>
+                                    <span className="text-slate-500 dark:text-slate-400 text-sm">{new Date(wordObj.last_practiced).toLocaleDateString()}</span>
                                 </div>
                             </div>
                         );

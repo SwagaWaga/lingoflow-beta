@@ -42,12 +42,12 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
     const isCorrect = selectedAnswer === currentQuestion.answer;
 
     return (
-        <div className="max-w-3xl mx-auto p-6 font-sans">
-            <div className="mb-8">
+        <div className="max-w-3xl mx-auto p-4 md:p-6 font-sans">
+            <div className="mb-5 md:mb-8">
                 <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Reading Comprehension Check</span>
-                    <span className="text-sm font-bold bg-slate-200 text-slate-600 px-3 py-1 rounded-full">
-                        Question {currentQuestionIndex + 1} of {questions.length}
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Reading Comprehension</span>
+                    <span className="text-xs md:text-sm font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-3 py-1 rounded-full">
+                        Q {currentQuestionIndex + 1} / {questions.length}
                     </span>
                 </div>
                 <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
@@ -58,8 +58,8 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 mb-6 transition-colors">
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-8 leading-relaxed">
+            <div className="bg-white dark:bg-slate-800 p-5 md:p-8 rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 mb-4 md:mb-6 transition-colors">
+                <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white mb-5 md:mb-8 leading-snug md:leading-relaxed">
                     {currentQuestion.question}
                 </h2>
 
@@ -82,13 +82,13 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
                                 key={idx}
                                 onClick={() => handleOptionClick(option)}
                                 disabled={showExplanation}
-                                className={`w-full text-left p-4 rounded-xl border-2 font-medium transition-all ${buttonStyle} disabled:cursor-auto`}
+                                className={`w-full text-left p-4 md:p-4 py-4 rounded-xl border-2 font-medium transition-all ${buttonStyle} disabled:cursor-auto`}
                             >
                                 <div className="flex items-center">
-                                    <span className="w-8 h-8 rounded-full bg-white dark:bg-slate-600 shadow-sm flex items-center justify-center font-bold mr-4 text-slate-500 dark:text-slate-300 flex-shrink-0">
+                                    <span className="w-9 h-9 md:w-8 md:h-8 rounded-full bg-white dark:bg-slate-600 shadow-sm flex items-center justify-center font-bold mr-3 md:mr-4 text-slate-500 dark:text-slate-300 flex-shrink-0 text-sm">
                                         {String.fromCharCode(65 + idx)}
                                     </span>
-                                    <span className="leading-snug">{option}</span>
+                                    <span className="leading-snug text-sm md:text-base">{option}</span>
                                 </div>
                             </button>
                         );
@@ -97,20 +97,20 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
             </div>
 
             {showExplanation && (
-                <div className={`p-6 rounded-2xl mb-8 animate-fade-in-up border ${isCorrect
-                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-200'
-                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200'
+                <div className={`p-4 md:p-6 rounded-xl md:rounded-2xl mb-6 md:mb-8 animate-fade-in-up border ${isCorrect
+                        ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-200'
+                        : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200'
                     }`}>
-                    <div className="flex items-center mb-3">
-                        <span className="text-2xl mr-2">{isCorrect ? '✅' : '❌'}</span>
-                        <h3 className="font-bold text-lg">{isCorrect ? 'Correct!' : 'Incorrect'}</h3>
+                    <div className="flex items-center mb-2 md:mb-3">
+                        <span className="text-xl md:text-2xl mr-2">{isCorrect ? '✅' : '❌'}</span>
+                        <h3 className="font-bold text-base md:text-lg">{isCorrect ? 'Correct!' : 'Incorrect'}</h3>
                     </div>
                     {!isCorrect && (
-                        <p className="font-bold mb-2">
+                        <p className="font-bold mb-1 md:mb-2 text-sm md:text-base">
                             Correct Answer: <span className="underline decoration-2">{currentQuestion.answer}</span>
                         </p>
                     )}
-                    <p className="opacity-90 leading-relaxed font-medium">
+                    <p className="opacity-90 leading-relaxed font-medium text-sm md:text-base">
                         {currentQuestion.explanation}
                     </p>
                 </div>

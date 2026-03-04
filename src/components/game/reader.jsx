@@ -22,7 +22,7 @@ function getCategoryIcon(index) {
   return CATEGORY_ICONS[index % CATEGORY_ICONS.length];
 }
 
-export default function Reader({ session }) {
+export default function Reader({ session, preferredAccent = 'US' }) {
   // --- Selection State ---
   const [allArticles, setAllArticles] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState(null);
@@ -158,11 +158,12 @@ export default function Reader({ session }) {
       let hasCache = false;
       let aiDefinition = "";
       let aiDnaType = "Basic";
+      let aiAudioUrl = null;
 
       if (session?.user?.id) {
         const { data: cachedWord, error: dbErr } = await supabase
           .from('user_vocabulary')
-          .select('definition, dna_type')
+          .select('definition, dna_type, audio_url')
           .eq('user_id', session.user.id)
           .eq('word', cleanWord)
           .maybeSingle();
@@ -170,55 +171,52 @@ export default function Reader({ session }) {
         if (cachedWord && cachedWord.definition && cachedWord.definition !== "Definition not found") {
           aiDefinition = cachedWord.definition;
           aiDnaType = cachedWord.dna_type || "Basic";
+          aiAudioUrl = cachedWord.audio_url || null;
           hasCache = true;
         }
       }
 
-      // 2. Call Gemini if not in cache
+      // 2. Polyglot API Architecture if not in cache
       if (!hasCache) {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `Analyze the word '${cleanWord}' as it is used in this sentence: '${contextSentence}'. 1. Write a short, simple, 1-sentence definition. 2. Classify the word into EXACTLY ONE of these categories: 'Academic', 'Informal', 'Technical', 'Advanced', or 'Basic'. Return ONLY valid JSON in this exact format: {"definition": "your definition", "dna_type": "your category"} Do not include markdown formatting.`
-              }]
-            }]
-          })
-        });
 
-        if (response.status === 429) {
-          setFeedback("The AI is thinking too fast! Please wait 30 seconds before analyzing another word.");
-          setTimeout(() => setFeedback(""), 4000);
-          setIsAnalyzingWord(false);
-          return; // Abort adding to collected list so they can try again
-        }
+        // --- Step 2a: Free Dictionary API for Definition & Audio ---
+        try {
+          const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`);
+          if (dictRes.ok) {
+            const dictData = await dictRes.json();
 
-        const data = await response.json();
-        if (data.error) {
-          throw new Error(data.error.message);
-        }
+            // Safely extract first meaningful definition
+            if (dictData[0]?.meanings[0]?.definitions[0]?.definition) {
+              aiDefinition = dictData[0].meanings[0].definitions[0].definition;
+            }
 
-        if (data.candidates && data.candidates[0]) {
-          try {
-            const cleanResponse = data.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim();
-            const parsedData = JSON.parse(cleanResponse);
-            aiDefinition = parsedData.definition;
-            aiDnaType = parsedData.dna_type || "Basic";
-          } catch (e) {
-            aiDefinition = data.candidates[0].content.parts[0].text.trim();
+            // Safely extract audio URL based on user preference
+            if (dictData[0]?.phonetics && dictData[0].phonetics.length > 0) {
+              const validAudios = dictData[0].phonetics.filter(p => p.audio && p.audio.length > 0);
+              if (validAudios.length > 0) {
+                const requestedAudio = validAudios.find(p => p.audio.toLowerCase().includes(`-${preferredAccent.toLowerCase()}.`));
+                aiAudioUrl = requestedAudio ? requestedAudio.audio : validAudios[0].audio;
+              }
+            }
           }
-        } else {
-          throw new Error("Invalid response");
+        } catch (dictErr) {
+          console.warn("Free Dictionary API failed, falling back to basic definition.", dictErr);
         }
+
+        if (!aiDefinition) {
+          aiDefinition = "Definition not found. Please review manually.";
+        }
+
+        // --- Step 2b: Pre-computed DNA Classification ---
+        aiDnaType = article?.dna_map?.[cleanWord.toLowerCase()] || "Lexicon";
       }
 
       setCollectedWords(prev => [...prev, {
         word: cleanWord,
         context: contextSentence,
         definition: aiDefinition,
-        dna_type: aiDnaType
+        dna_type: aiDnaType,
+        audio_url: aiAudioUrl
       }]);
 
       if (hasCache) {
@@ -334,9 +332,9 @@ export default function Reader({ session }) {
 
               <div className="mt-4 md:mt-0 flex items-center space-x-3">
                 <span className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${art.difficulty_level === 'Intermediate' ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300' :
-                    art.difficulty_level === 'Advanced' ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300' :
-                      art.difficulty_level === 'Beginner' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' :
-                        'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+                  art.difficulty_level === 'Advanced' ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300' :
+                    art.difficulty_level === 'Beginner' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' :
+                      'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
                   }`}>
                   {art.difficulty_level || 'General'}
                 </span>
@@ -411,9 +409,9 @@ export default function Reader({ session }) {
     || (article?.content_data?.segments ? article.content_data.segments.map(seg => seg.text).join('\n\n') : "No content available.");
 
   return (
-    <div className="max-w-3xl mx-auto p-6 min-h-[70vh] font-sans">
+    <div className="max-w-3xl mx-auto p-4 md:p-6 min-h-[70vh] font-sans">
       {/* HUD */}
-      <div className="flex justify-between items-center mb-8 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
+      <div className="flex justify-between items-center mb-5 md:mb-8 bg-white dark:bg-slate-800 p-3 md:p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
         <div className="flex items-center space-x-4">
           <button
             onClick={clearSelection}
@@ -423,38 +421,49 @@ export default function Reader({ session }) {
             Back to Articles
           </button>
         </div>
-        <div className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 px-4 py-2 rounded-full font-bold shadow-sm transition-all text-lg flex items-center space-x-2">
+        <div className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 px-3 md:px-4 py-1.5 md:py-2 rounded-full font-bold shadow-sm transition-all text-sm md:text-lg flex items-center space-x-1.5 md:space-x-2">
           <span>✨</span>
           <span>{xp} XP</span>
         </div>
       </div>
 
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-extrabold text-slate-800 dark:text-white tracking-tight">{article.title}</h1>
-        <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">{article.category}</span>
+      <div className="mb-4 md:mb-6 flex flex-wrap items-start md:items-center justify-between gap-2">
+        <h1 className="text-xl md:text-3xl font-extrabold text-slate-800 dark:text-white tracking-tight">{article.title}</h1>
+        <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider flex-shrink-0">{article.category}</span>
       </div>
 
       {/* Article Content */}
-      <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-lg mb-8 border-l-4 border-blue-500 relative transition-colors">
-        <p className="text-xl leading-loose text-slate-700 dark:text-slate-200 whitespace-pre-wrap">
-          {fullArticleText.split(" ").map((word, i) => {
-            const cleanCheckWord = word.toLowerCase().replace(/[.,!?;:()"'`]/g, "");
-            const isCollected = collectedWords.some(item => item.word === cleanCheckWord);
+      <div className="bg-white dark:bg-slate-800 p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-lg mb-6 md:mb-8 border-l-4 border-blue-500 relative transition-colors">
+        <div className="text-base md:text-xl text-slate-700 dark:text-slate-200">
+          {fullArticleText.split('\n').map((paragraph, pIdx) => {
+            if (!paragraph.trim()) return null;
 
             return (
-              <span
-                key={i}
-                onClick={() => handleWordClick(word, fullArticleText)}
-                className={`cursor-pointer rounded px-1.5 py-0.5 transition-colors inline-block mx-0.5 ${isCollected
-                  ? 'bg-yellow-200 dark:bg-yellow-700/60 text-yellow-900 dark:text-yellow-100 border-b-2 border-yellow-400 dark:border-yellow-600 font-medium'
-                  : 'hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-800 dark:hover:text-blue-200'
-                  }`}
-              >
-                {word}
-              </span>
+              <p key={pIdx} className="mb-6 leading-loose block text-left">
+                {paragraph.split(/\s+/).map((word, wIdx) => {
+                  if (!word) return null;
+                  const cleanCheckWord = word.toLowerCase().replace(/[.,!?;:()"'`]/g, "");
+                  const isCollected = collectedWords.some(item => item.word === cleanCheckWord);
+
+                  return (
+                    <span key={`${pIdx}-${wIdx}`}>
+                      <button
+                        onClick={() => handleWordClick(word, fullArticleText)}
+                        className={`inline-block py-1 rounded transition-colors ${isCollected
+                          ? 'bg-yellow-200 dark:bg-yellow-700/60 text-yellow-900 dark:text-yellow-100 border-b-2 border-yellow-400 dark:border-yellow-600 font-medium px-1'
+                          : 'hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                      >
+                        {word}
+                      </button>
+                      {" "}
+                    </span>
+                  );
+                })}
+              </p>
             );
           })}
-        </p>
+        </div>
       </div>
 
       {/* Vocabulary Vault */}

@@ -36,6 +36,7 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                 context_sentence: item.context,
                 definition: item.definition,
                 dna_type: item.dna_type,
+                audio_url: item.audio_url || null,
                 mastery_level: 1,
                 last_practiced: new Date().toISOString()
             }));
@@ -69,8 +70,8 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
     if (reviewWords.length === 0) {
         return (
             <div className="text-center py-20">
-                <p className="text-gray-500 text-lg">No words collected. Go back and highlight some!</p>
-                <button onClick={onComplete} className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition">Back to Lobby</button>
+                <p className="text-gray-500 dark:text-gray-400 text-lg">No words collected. Go back and highlight some!</p>
+                <button onClick={onComplete} className="mt-4 px-6 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg font-bold hover:bg-blue-700 dark:hover:bg-blue-600 transition">Back to Lobby</button>
             </div>
         );
     }
@@ -78,8 +79,8 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
     return (
         <div className="w-full">
             <div className="text-center mb-10">
-                <h2 className="text-3xl font-black text-gray-800 tracking-tight">Smart Review</h2>
-                <p className="text-gray-500 font-medium">Review the AI-generated definitions contextually. Feel free to translate or add notes before saving them to your Vault!</p>
+                <h2 className="text-3xl font-black text-gray-800 dark:text-white tracking-tight">Smart Review</h2>
+                <p className="text-gray-500 dark:text-gray-400 font-medium">Review the AI-generated definitions contextually. Feel free to translate or add notes before saving them to your Vault!</p>
             </div>
 
             {error && (
@@ -100,28 +101,28 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                     const badgeClass = dnaColors[item.dna_type] || dnaColors.Basic;
 
                     return (
-                        <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col group hover:border-blue-200 transition-colors">
+                        <div key={idx} className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 flex flex-col group hover:border-blue-200 dark:hover:border-blue-500 transition-colors">
                             <div className="mb-4">
                                 <div className="flex items-center space-x-3 mb-2">
-                                    <h3 className="text-2xl font-black text-blue-600 capitalize">{item.word}</h3>
+                                    <h3 className="text-2xl font-black text-blue-600 dark:text-blue-400 capitalize">{item.word}</h3>
                                     {item.dna_type && (
                                         <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${badgeClass}`}>
                                             {item.dna_type}
                                         </span>
                                     )}
                                 </div>
-                                <p className="text-gray-600 italic mt-2 border-l-4 border-gray-200 pl-4 py-1.5 bg-gray-50 rounded-r-lg">
+                                <p className="text-gray-600 dark:text-gray-300 italic mt-2 border-l-4 border-gray-200 dark:border-gray-600 pl-4 py-1.5 bg-gray-50 dark:bg-slate-900/50 rounded-r-lg">
                                     "{item.context}"
                                 </p>
                             </div>
 
                             <div className="flex flex-col">
-                                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Definition / Translation notes</label>
+                                <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Definition / Translation notes</label>
                                 <input
                                     type="text"
                                     value={item.definition}
                                     onChange={(e) => handleDefinitionChange(idx, e.target.value)}
-                                    className="w-full bg-blue-50/50 border border-blue-100 rounded-xl px-4 py-3 text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className="w-full bg-blue-50/50 dark:bg-slate-900/50 border border-blue-100 dark:border-slate-700 rounded-xl px-4 py-3 text-gray-800 dark:text-slate-300 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-all"
                                 />
                             </div>
                         </div>
