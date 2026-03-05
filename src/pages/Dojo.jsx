@@ -16,13 +16,28 @@ const maskText = (text, targetWord) => {
 }
 
 export default function Dojo({ session }) {
-    const [practiceBatch, setPracticeBatch] = useState([]);
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [currentPhase, setCurrentPhase] = useState(1);
+    const [practiceBatch, setPracticeBatch] = useState(() => {
+        const saved = localStorage.getItem('dojoSession');
+        return saved ? JSON.parse(saved).practiceBatch : [];
+    });
+    const [currentIndex, setCurrentIndex] = useState(() => {
+        const saved = localStorage.getItem('dojoSession');
+        return saved ? JSON.parse(saved).currentIndex : 0;
+    });
+    const [currentPhase, setCurrentPhase] = useState(() => {
+        const saved = localStorage.getItem('dojoSession');
+        return saved ? JSON.parse(saved).currentPhase : 1;
+    });
+    const [survivingWords, setSurvivingWords] = useState(() => {
+        const saved = localStorage.getItem('dojoSession');
+        return saved ? JSON.parse(saved).survivingWords : [];
+    });
     const [options, setOptions] = useState([]);
     const [isFinished, setIsFinished] = useState(false);
     const [textAnswer, setTextAnswer] = useState("");
     const [insufficientWords, setInsufficientWords] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [trainedCount, setTrainedCount] = useState(0);
 
     // AI Variables (Level 2)
     const [gptQuestion, setGptQuestion] = useState(null);
@@ -55,7 +70,15 @@ export default function Dojo({ session }) {
         cleanupDB();
     }, [session]);
 
-    // Fetch up to 10 words that need practice
+    // Auto-Save Session Progress
+    useEffect(() => {
+        if (practiceBatch.length > 0) {
+            const sessionData = { currentPhase, currentIndex, practiceBatch, survivingWords };
+            localStorage.setItem('dojoSession', JSON.stringify(sessionData));
+        }
+    }, [currentPhase, currentIndex, practiceBatch, survivingWords]);
+
+    // Fetch up to 5 words that need practice (Only if no active session)
     useEffect(() => {
         async function fetchTrainingData() {
             if (!session?.user?.id) {
@@ -63,15 +86,25 @@ export default function Dojo({ session }) {
                 return;
             }
 
+            // Skip fetch if we successfully loaded a session from storage
+            if (practiceBatch.length > 0) {
+                setLoading(false);
+                return;
+            }
+
             try {
                 setLoading(true);
+                // 12 hours ago
+                const cooldownLimit = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+
                 const { data, error } = await supabase
                     .from('user_vocabulary')
                     .select('*')
                     .eq('user_id', session.user.id)
-                    .lt('mastery_level', 4) // Only words not fully mastered
-                    .order('last_practiced', { ascending: true }) // Oldest first
-                    .limit(10);
+                    .lt('mastery_level', 4) // Exclude fully Mastered words
+                    .or(`last_practiced.is.null,last_practiced.lte.${cooldownLimit}`) // SRS cooldown logic
+                    .order('last_practiced', { ascending: true, nullsFirst: true }) // Oldest first, prioritizing unpracticed
+                    .limit(5);
 
                 if (data && data.length < 4) {
                     setInsufficientWords(true);
@@ -186,6 +219,9 @@ export default function Dojo({ session }) {
         if (isCorrect) {
             setFeedback("Correct! 🔥");
             dbNewLevel = Math.max(dbNewLevel, currentPhase + 1);
+            if (currentPhase === 1) {
+                setSurvivingWords(prev => [...prev, currentItem]);
+            }
         } else {
             setFeedback("Incorrect! 🧊");
             dbNewLevel = Math.max(1, dbNewLevel - 1);
@@ -218,19 +254,59 @@ export default function Dojo({ session }) {
                 setCurrentIndex(prev => prev + 1);
             } else {
                 if (currentPhase === 1) {
-                    setCurrentPhase(2);
-                    setCurrentIndex(0);
-                    // Shuffle array for phase 2
-                    setPracticeBatch(prev => [...prev].sort(() => 0.5 - Math.random()));
+                    // Use functional update to ensure we read freshest array from closure
+                    setSurvivingWords(latestSurvivors => {
+                        if (latestSurvivors.length === 0) {
+                            setCurrentPhase('defeat');
+                        } else {
+                            // Sieve passed! Advance to phase 2 with only the survivors
+                            setPracticeBatch([...latestSurvivors].sort(() => 0.5 - Math.random()));
+                            setCurrentIndex(0);
+                            setCurrentPhase(2);
+                        }
+                        return []; // Clear tracking array
+                    });
                 } else {
+                    // --- VICTORY BLOCK: SRS UPDATE ---
+                    setIsSaving(true);
+
                     if (session?.user?.id) {
-                        const { error } = await supabase.rpc('update_user_streak', { user_id_param: session.user.id });
-                        if (error) console.error("Error updating streak:", error);
+                        try {
+                            // 1. Update Streak
+                            await supabase.rpc('update_user_streak', { user_id_param: session.user.id });
+
+                            // 2. Loop through and update SRS Timestamps sequentially
+                            const now = new Date().toISOString();
+                            for (const wordObj of practiceBatch) {
+                                await supabase
+                                    .from('user_vocabulary')
+                                    .update({ last_practiced: now })
+                                    .match({ user_id: session.user.id, word: wordObj.word });
+                            }
+                        } catch (err) {
+                            console.error("Failed to save session progress:", err);
+                        }
                     }
+
+                    setTrainedCount(practiceBatch.length);
+                    setIsSaving(false);
+                    localStorage.removeItem('dojoSession');
+                    setPracticeBatch([]);
                     setIsFinished(true);
                 }
             }
         }, 1500);
+    };
+
+    const handleAbandonRun = () => {
+        const confirmQuit = window.confirm("Are you sure you want to abandon this training session?");
+        if (confirmQuit) {
+            localStorage.removeItem('dojoSession');
+            setCurrentPhase(1);
+            setCurrentIndex(0);
+            setSurvivingWords([]);
+            setPracticeBatch([]); // Trigger a fresh batch fetch
+        }
     };
 
     const handleGradeSentence = async (e) => {
@@ -339,17 +415,26 @@ export default function Dojo({ session }) {
             <div className="max-w-4xl mx-auto p-6">
                 <div className="bg-white dark:bg-slate-800 p-12 rounded-3xl text-center shadow-lg border border-slate-100 dark:border-slate-700 transition-colors">
                     <span className="text-6xl mb-6 block">🏆</span>
-                    <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-4">You are a Master!</h2>
+                    <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-4">You are all caught up!</h2>
                     <p className="text-slate-500 dark:text-slate-400 font-medium text-lg max-w-lg mx-auto mb-8 leading-relaxed">
-                        There are no words currently needing your attention. Go read an article to find new words, or take a break!
+                        Incredible work. Your recently trained words are resting right now to build your long-term memory. Take a break, or go to the Vault to add new words.
                     </p>
                     <button
                         onClick={() => window.location.href = '/'}
                         className="bg-orange-500 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-orange-600 hover:-translate-y-1 transition-all shadow-lg hover:shadow-orange-500/40"
                     >
-                        Back to Library
+                        Return to Vault
                     </button>
                 </div>
+            </div>
+        );
+    }
+
+    if (isSaving) {
+        return (
+            <div className="max-w-4xl mx-auto p-6 flex flex-col items-center justify-center min-h-[50vh]">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mb-4"></div>
+                <p className="text-orange-600 dark:text-orange-400 font-bold animate-pulse">Saving your mastery progress...</p>
             </div>
         );
     }
@@ -360,16 +445,53 @@ export default function Dojo({ session }) {
                 <div className="bg-white dark:bg-slate-800 p-12 rounded-3xl text-center shadow-2xl border-t-8 border-orange-500 w-full max-w-md transform transition-all hover:-translate-y-2">
                     <span className="text-6xl mb-6 block text-center animate-bounce">🎌</span>
                     <h2 className="text-4xl font-black text-slate-800 dark:text-white mb-4 tracking-tight">Dojo Complete!</h2>
-                    <p className="text-xl font-medium text-slate-600 dark:text-slate-300 mb-8">You trained <strong className="text-orange-500">10</strong> words!</p>
+                    <p className="text-xl font-medium text-slate-600 dark:text-slate-300 mb-8">You trained <strong className="text-orange-500">{trainedCount}</strong> words!</p>
 
                     <button
-                        onClick={() => window.location.reload()} // For simplicity, reset the whole view route or trigger parent if passed a prop. Since App controls 'currentView', usually we pass a prop. For now, we leave as is or user can just click nav buttons.
+                        onClick={() => {
+                            localStorage.removeItem('dojoSession');
+                            window.location.reload();
+                        }}
                         className="px-8 py-4 w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-extrabold text-xl rounded-2xl shadow-lg hover:shadow-orange-500/40 transition-all hover:scale-[1.02]"
                     >
                         Train Again
                     </button>
                     <p className="mt-4 text-xs text-slate-400 font-bold uppercase tracking-widest">Or navigate using the menu above</p>
                 </div>
+            </div>
+        );
+    }
+
+    if (currentPhase === 'defeat') {
+        return (
+            <div className="max-w-4xl mx-auto p-6 min-h-[70vh] flex items-center justify-center">
+                <div className="bg-white dark:bg-slate-800 p-12 rounded-3xl text-center shadow-2xl border-t-8 border-slate-800 w-full max-w-md transform transition-all hover:-translate-y-2">
+                    <span className="text-6xl mb-6 block text-center animate-pulse">☠️</span>
+                    <h2 className="text-4xl font-black text-slate-800 dark:text-white mb-4 tracking-tight">Dojo Defeat</h2>
+                    <p className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-8 leading-relaxed">The Dojo requires absolute focus. None of your words survived the first round.</p>
+
+                    <button
+                        onClick={() => {
+                            localStorage.removeItem('dojoSession');
+                            window.location.href = '/';
+                        }}
+                        className="px-8 py-4 w-full bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xl rounded-2xl shadow-lg hover:shadow-slate-500/40 transition-all hover:scale-[1.02]"
+                    >
+                        Return to Vault
+                    </button>
+                    <p className="mt-4 text-xs text-slate-400 font-bold uppercase tracking-widest">Train harder and try again.</p>
+                </div>
+            </div>
+        );
+    }
+
+    // --- DEFENSIVE RENDERING GUARD ---
+    // Prevents crashing if the component tries to render before state hooks have resolved the array
+    if (!practiceBatch || practiceBatch.length === 0 || !practiceBatch[currentIndex]) {
+        return (
+            <div className="max-w-4xl mx-auto p-6 flex flex-col items-center justify-center min-h-[50vh]">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mb-4"></div>
+                <p className="text-orange-600 dark:text-orange-400 font-bold animate-pulse">Initializing Dojo Session...</p>
             </div>
         );
     }
@@ -425,7 +547,7 @@ export default function Dojo({ session }) {
                     </>
                 )}
 
-                {trainingLevel >= 3 && !aiFeedback && (
+                {currentPhase >= 3 && !aiFeedback && (
                     <>
                         <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-4">Level 3: Active Recall</span>
                         <p className="text-xl font-medium text-slate-800 dark:text-white leading-snug mb-6">
@@ -452,7 +574,7 @@ export default function Dojo({ session }) {
                     </>
                 )}
 
-                {trainingLevel >= 3 && aiFeedback && (
+                {currentPhase >= 3 && aiFeedback && (
                     <>
                         <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-4">Level 3: Results</span>
                         <div className={`p-6 rounded-2xl border-2 mb-6 ${aiFeedback.passed ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-200' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200'}`}>
@@ -481,9 +603,9 @@ export default function Dojo({ session }) {
                 )}
             </div>
 
-            {trainingLevel === 1 || trainingLevel === 2 ? (
+            {currentPhase === 1 || currentPhase === 2 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
-                    {(trainingLevel === 2 && gptQuestion ? gptQuestion.options : options).map((opt, idx) => (
+                    {(currentPhase === 2 && gptQuestion ? gptQuestion.options : options).map((opt, idx) => (
                         <button
                             key={idx}
                             onClick={() => handleAnswer(opt)}
@@ -495,6 +617,17 @@ export default function Dojo({ session }) {
                     ))}
                 </div>
             ) : null}
+
+            {(currentPhase === 1 || currentPhase === 2) && (
+                <div className="mt-8 flex justify-center">
+                    <button
+                        onClick={handleAbandonRun}
+                        className="px-6 py-2 mt-4 bg-slate-800/60 border border-red-900/50 text-red-400 hover:bg-red-900/40 hover:text-red-300 rounded-full text-sm font-medium transition-all shadow-sm"
+                    >
+                        Abandon Training
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

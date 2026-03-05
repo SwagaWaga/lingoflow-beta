@@ -6,6 +6,7 @@ import Dictionary from './pages/Dictionary';
 import Dojo from './pages/Dojo';
 import FloatingWords from './components/FloatingWords';
 import { supabase } from './lib/supabaseClient';
+import { useAccent } from './context/AccentContext';
 
 const NAV_ITEMS = [
   { key: 'game', label: '📖 Play' },
@@ -19,18 +20,14 @@ function App() {
   const [currentView, setCurrentView] = useState('game');
   const [dailyStreak, setDailyStreak] = useState(0);
   const [isDark, setIsDark] = useState(() => localStorage.getItem('lf-dark') === 'true');
-  const [preferredAccent, setPreferredAccent] = useState(() => localStorage.getItem('lf-accent') || 'US');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { preferredAccent, setPreferredAccent } = useAccent();
 
   useEffect(() => {
     const root = document.documentElement;
     isDark ? root.classList.add('dark') : root.classList.remove('dark');
     localStorage.setItem('lf-dark', isDark);
   }, [isDark]);
-
-  useEffect(() => {
-    localStorage.setItem('lf-accent', preferredAccent);
-  }, [preferredAccent]);
 
   const toggleDark = useCallback(() => setIsDark(prev => !prev), []);
 
@@ -125,12 +122,11 @@ function App() {
                 </div>
 
                 {/* Accent Selection */}
-                <div className="hidden sm:flex items-center space-x-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1">
-                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Voice:</span>
+                <div className="hidden sm:flex items-center space-x-2">
                   <select
                     value={preferredAccent}
                     onChange={(e) => setPreferredAccent(e.target.value)}
-                    className="bg-transparent text-slate-700 dark:text-slate-300 text-xs md:text-sm font-bold focus:outline-none cursor-pointer transition-colors duration-200"
+                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-full text-xs font-bold text-slate-300 hover:bg-slate-700 transition-colors cursor-pointer outline-none"
                     title="Pronunciation Accent"
                   >
                     <option value="US">US</option>
@@ -244,13 +240,13 @@ function App() {
 
                 {/* Reading Session Card */}
                 <div className="relative w-full bg-white dark:bg-slate-800 rounded-2xl md:rounded-3xl shadow-lg border border-slate-200/80 dark:border-slate-700 overflow-hidden z-10 transition-colors duration-300">
-                  <Reader session={session} preferredAccent={preferredAccent} />
+                  <Reader session={session} />
                 </div>
               </>
             )}
 
             {currentView === 'admin' && <Admin />}
-            {currentView === 'dictionary' && <Dictionary session={session} preferredAccent={preferredAccent} dailyStreak={dailyStreak} />}
+            {currentView === 'dictionary' && <Dictionary session={session} dailyStreak={dailyStreak} />}
             {currentView === 'dojo' && <Dojo session={session} />}
 
           </main>

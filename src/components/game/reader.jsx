@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import SmartReview from './SmartReview';
 import ReadingQuiz from './ReadingQuiz';
+import { useAccent } from '../../context/AccentContext';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const CATEGORY_COLORS = [
   'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300',
@@ -22,7 +24,8 @@ function getCategoryIcon(index) {
   return CATEGORY_ICONS[index % CATEGORY_ICONS.length];
 }
 
-export default function Reader({ session, preferredAccent = 'US' }) {
+export default function Reader({ session }) {
+  const { preferredAccent } = useAccent();
   // --- Selection State ---
   const [allArticles, setAllArticles] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState(null);
@@ -179,14 +182,21 @@ export default function Reader({ session, preferredAccent = 'US' }) {
       // 2. Polyglot API Architecture if not in cache
       if (!hasCache) {
 
-        // --- Step 2a: Free Dictionary API for Definition & Audio ---
+        // --- Step 2a: Pre-computed DNA Classification & Prefilled Definition ---
+        const dnaData = article?.dna_map?.[cleanWord.toLowerCase()];
+        aiDnaType = typeof dnaData === 'string' ? dnaData : (dnaData?.category || "Lexicon");
+        if (typeof dnaData === 'object' && dnaData?.definition) {
+          aiDefinition = dnaData.definition;
+        }
+
+        // --- Step 2b: Free Dictionary API for Definition & Audio ---
         try {
           const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`);
           if (dictRes.ok) {
             const dictData = await dictRes.json();
 
             // Safely extract first meaningful definition
-            if (dictData[0]?.meanings[0]?.definitions[0]?.definition) {
+            if (!aiDefinition && dictData[0]?.meanings[0]?.definitions[0]?.definition) {
               aiDefinition = dictData[0].meanings[0].definitions[0].definition;
             }
 
@@ -203,12 +213,27 @@ export default function Reader({ session, preferredAccent = 'US' }) {
           console.warn("Free Dictionary API failed, falling back to basic definition.", dictErr);
         }
 
+        // --- Step 2c: LLM Fallback for Definitions ---
         if (!aiDefinition) {
-          aiDefinition = "Definition not found. Please review manually.";
-        }
+          try {
+            console.log("Free Dictionary API failed, falling back to LLM for definition...");
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY_DOJO;
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            const prompt = `You are an expert ESL (English as a Second Language) teacher preparing students for the IELTS exam. Provide a definition for the word or phrase: "${cleanWord}". You must use simple, clear, and everyday English (B1/B2 level vocabulary). Do NOT use overly complex academic jargon or circular definitions. Keep the definition concise—strictly under 15 words if possible. It must be easy to read on a small flashcard. Return ONLY the definition text without any markdown or quotes.`;
+            const result = await model.generateContent(prompt);
+            const text = result.response.text();
 
-        // --- Step 2b: Pre-computed DNA Classification ---
-        aiDnaType = article?.dna_map?.[cleanWord.toLowerCase()] || "Lexicon";
+            if (text && text.trim()) {
+              aiDefinition = text.replace(/^["']|["']$/g, '').trim();
+            } else {
+              aiDefinition = "Definition not found. Please review manually.";
+            }
+          } catch (aiErr) {
+            console.warn("LLM Fallback failed:", aiErr);
+            aiDefinition = "Definition not found. Please review manually.";
+          }
+        }
       }
 
       setCollectedWords(prev => [...prev, {

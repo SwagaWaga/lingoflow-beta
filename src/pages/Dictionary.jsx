@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import AchievementsBoard from '../components/AchievementsBoard';
+import { useAccent } from '../context/AccentContext';
 
-export default function Dictionary({ session, preferredAccent = 'US', dailyStreak = 0 }) {
+export default function Dictionary({ session, dailyStreak = 0 }) {
+    const { preferredAccent } = useAccent();
     const [vaultWords, setVaultWords] = useState([]);
     const [loading, setLoading] = useState(true);
     const [powerScore, setPowerScore] = useState(0);
     const [error, setError] = useState(null);
+    const [editingWord, setEditingWord] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
     const audioRef = useRef(null);
 
     // Pause audio when leaving the Dictionary
@@ -19,18 +23,47 @@ export default function Dictionary({ session, preferredAccent = 'US', dailyStrea
         };
     }, []);
 
-    const handlePlayAudio = (url) => {
-        if (!url) return;
+    // Helper for clean TTS execution
+    const triggerTTS = (text, lang) => {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = lang;
 
-        // Stop any currently playing audio
-        if (audioRef.current) {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
+        // Ensure browser has loaded voice options and pick the best regional match
+        const voices = window.speechSynthesis.getVoices();
+        const voice = voices.find(v => v.lang === lang) || voices.find(v => v.lang.startsWith(lang));
+        if (voice) {
+            utterance.voice = voice;
         }
 
-        // Play the new audio
-        audioRef.current = new Audio(url);
-        audioRef.current.play().catch(err => console.error("Audio playback failed:", err));
+        window.speechSynthesis.speak(utterance);
+    };
+
+    const handlePlayAudio = async (wordText) => {
+        window.speechSynthesis.cancel();
+        // Ensure we read the exact key saved by the Navbar
+        const currentAccent = localStorage.getItem('accent') || 'US';
+        const accentMap = { 'US': 'us', 'UK': 'uk', 'AU': 'au' };
+        const ttsLangMap = { 'US': 'en-US', 'UK': 'en-GB', 'AU': 'en-AU' };
+        try {
+            const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${wordText}`);
+            const data = await res.json();
+            const phonetics = data[0]?.phonetics || [];
+            // Look ONLY for the exact requested accent
+            const targetAudio = phonetics.find(p => p.audio && p.audio.includes(`-${accentMap[currentAccent]}.mp3`))?.audio;
+
+            if (targetAudio) {
+                // Play the exact human match
+                if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+                audioRef.current = new Audio(targetAudio);
+                audioRef.current.play().catch(e => console.error("Audio error:", e));
+            } else {
+                // Force the robot to use the requested accent
+                triggerTTS(wordText, ttsLangMap[currentAccent]);
+            }
+        } catch (error) {
+            // If API completely fails, still use the correct robot accent
+            triggerTTS(wordText, ttsLangMap[currentAccent]);
+        }
     };
 
     useEffect(() => {
@@ -80,14 +113,6 @@ export default function Dictionary({ session, preferredAccent = 'US', dailyStrea
         if (level === 3) return { emoji: '🌳', title: 'Strong', color: 'bg-teal-100 text-teal-800 border-teal-200' };
         if (level >= 4) return { emoji: '🔥', title: 'Mastered', color: 'bg-orange-100 text-orange-800 border-orange-200' };
         return { emoji: '🌱', title: 'Seed', color: 'bg-green-100 text-green-800 border-green-200' };
-    };
-
-    const getAccentBadge = (url) => {
-        if (!url) return null;
-        if (url.includes('-uk.')) return 'UK';
-        if (url.includes('-us.')) return 'US';
-        if (url.includes('-au.')) return 'AU';
-        return 'Global';
     };
 
     const calculateAcademicRank = (academicCount) => {
@@ -162,6 +187,31 @@ export default function Dictionary({ session, preferredAccent = 'US', dailyStrea
         { key: 'Informal', color: 'bg-yellow-400', bg: 'bg-yellow-100', icon: '🗣️' },
         { key: 'Basic', color: 'bg-green-500', bg: 'bg-green-100', icon: '🌱' },
     ];
+
+    const handleSaveChanges = async (e) => {
+        e.preventDefault();
+        setIsSaving(true);
+        try {
+            const { error: updateError } = await supabase
+                .from('user_vocabulary')
+                .update({
+                    word: editingWord.word,
+                    definition: editingWord.definition,
+                    dna_type: editingWord.dna_type || 'Basic'
+                })
+                .match({ id: editingWord.id });
+
+            if (updateError) throw updateError;
+
+            setVaultWords(prev => prev.map(w => w.id === editingWord.id ? editingWord : w));
+            setEditingWord(null);
+        } catch (err) {
+            console.error("Error updating word:", err);
+            alert("Failed to update word details.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     return (
         <div className="max-w-6xl mx-auto p-4 md:p-6 font-sans">
@@ -255,28 +305,33 @@ export default function Dictionary({ session, preferredAccent = 'US', dailyStrea
                     {vaultWords.map((wordObj) => {
                         const stage = getEvolutionStage(wordObj.mastery_level);
                         return (
-                            <div key={wordObj.id || wordObj.word} className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-md border border-slate-100 dark:border-slate-700 hover:shadow-xl transition-all transform hover:-translate-y-1 relative overflow-hidden group">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="flex items-center gap-3">
-                                        <h3 className="text-2xl font-bold text-slate-800 dark:text-white capitalize tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                            <div key={wordObj.id || wordObj.word} className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-md border border-slate-100 dark:border-slate-700 hover:shadow-xl transition-all transform hover:-translate-y-1 relative overflow-hidden group flex flex-col h-full">
+                                <div className="flex flex-wrap justify-between items-start mb-4 gap-y-2 w-full">
+                                    <div className="flex flex-wrap items-center gap-3 min-w-0">
+                                        <h3 className="text-2xl font-bold text-slate-800 dark:text-white capitalize tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate max-w-full">
                                             {wordObj.word}
                                         </h3>
-                                        {wordObj.audio_url && (
-                                            <div className="flex items-center space-x-2">
-                                                <button
-                                                    onClick={() => handlePlayAudio(wordObj.audio_url)}
-                                                    className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-indigo-500 dark:text-slate-300 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-all flex items-center justify-center shadow-sm"
-                                                    title="Play Pronunciation"
-                                                >
-                                                    🔊
-                                                </button>
-                                                <span className="text-[10px] font-bold tracking-wider bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase ml-2">
-                                                    {getAccentBadge(wordObj.audio_url)}
-                                                </span>
-                                            </div>
-                                        )}
+                                        <div className="flex items-center space-x-2 shrink-0">
+                                            <button
+                                                onClick={() => setEditingWord(wordObj)}
+                                                className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-indigo-500 dark:text-slate-300 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-all flex items-center justify-center shadow-sm shrink-0"
+                                                title="Edit Word"
+                                            >
+                                                ✏️
+                                            </button>
+                                            <button
+                                                onClick={() => handlePlayAudio(wordObj.word)}
+                                                className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-indigo-500 dark:text-slate-300 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-all flex items-center justify-center shadow-sm shrink-0"
+                                                title="Play Pronunciation"
+                                            >
+                                                🔊
+                                            </button>
+                                            <span className="ml-2 px-2 py-0.5 bg-slate-700 text-slate-300 text-[10px] font-bold uppercase tracking-widest rounded-full flex items-center justify-center shrink-0">
+                                                {preferredAccent}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border flex items-center space-x-1 ${stage.color}`}>
+                                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border flex items-center space-x-1 shrink-0 ${stage.color}`}>
                                         <span>{stage.emoji}</span>
                                         <span>{stage.title}</span>
                                     </span>
@@ -285,7 +340,7 @@ export default function Dictionary({ session, preferredAccent = 'US', dailyStrea
                                 {wordObj.definition && (
                                     <div className="mb-4">
                                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Definition</span>
-                                        <p className="text-slate-600 dark:text-slate-300 font-medium leading-snug">{wordObj.definition}</p>
+                                        <p className="text-slate-600 dark:text-slate-300 font-medium leading-snug line-clamp-3">{wordObj.definition}</p>
                                     </div>
                                 )}
 
@@ -299,6 +354,68 @@ export default function Dictionary({ session, preferredAccent = 'US', dailyStrea
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Edit Word Modal */}
+            {editingWord && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl border border-slate-200 dark:border-slate-700 transform transition-all">
+                        <h3 className="text-2xl font-bold mb-6 text-slate-800 dark:text-white flex items-center gap-2">
+                            <span>✏️</span> Edit Word
+                        </h3>
+                        <form onSubmit={handleSaveChanges} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Word</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={editingWord.word}
+                                    onChange={(e) => setEditingWord({ ...editingWord, word: e.target.value })}
+                                    className="w-full p-4 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Definition</label>
+                                <textarea
+                                    required
+                                    rows="4"
+                                    value={editingWord.definition || ''}
+                                    onChange={(e) => setEditingWord({ ...editingWord, definition: e.target.value })}
+                                    className="w-full p-4 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">DNA Category</label>
+                                <select
+                                    value={editingWord.dna_type || 'Basic'}
+                                    onChange={(e) => setEditingWord({ ...editingWord, dna_type: e.target.value })}
+                                    className="w-full p-4 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 shadow-sm appearance-none"
+                                >
+                                    {dnaCategories.map(c => (
+                                        <option key={c.key} value={c.key}>{c.key}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex gap-4 justify-end pt-6 mt-6 border-t border-slate-100 dark:border-slate-700">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingWord(null)}
+                                    disabled={isSaving}
+                                    className="px-6 py-3 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSaving}
+                                    className="px-6 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg flex items-center gap-2 transition-all disabled:opacity-50 hover:-translate-y-0.5"
+                                >
+                                    {isSaving ? "Saving..." : "Save Changes"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
         </div>
