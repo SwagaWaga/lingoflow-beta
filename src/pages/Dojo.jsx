@@ -70,6 +70,11 @@ export default function Dojo({ session }) {
     // Phase 0 encoding state
     const [isRevealed, setIsRevealed] = useState(false);
 
+    // AI Variables (Level 1)
+    const [phase1Sentence, setPhase1Sentence] = useState("");
+    const [isGeneratingPhase1, setIsGeneratingPhase1] = useState(false);
+    const [timer, setTimer] = useState(15);
+
     // AI Variables (Level 2)
     const [gptQuestion, setGptQuestion] = useState(null);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -132,13 +137,10 @@ export default function Dojo({ session }) {
                     .from('user_vocabulary')
                     .select('*')
                     .eq('user_id', session.user.id)
-                    // TEMPORARILY DISABLED FOR DEBUGGING
-                    // .lt('mastery_level', 4) // Exclude fully Mastered words
-                    // .or('last_practiced.is.null,last_practiced.lte.' + cooldownTime) // SRS cooldown logic
+                    .lt('mastery_level', 4) // Exclude fully Mastered words
+                    .or('last_practiced.is.null,last_practiced.lte.' + cooldownTime) // SRS cooldown logic
                     .order('last_practiced', { ascending: true, nullsFirst: true }) // Oldest first, prioritizing unpracticed
                     .limit(5);
-
-                console.log("DOJO FETCH DEBUG -> Data:", data, "Error:", error);
 
                 if (!data || data.length === 0) {
                     setPracticeBatch([]);
@@ -208,15 +210,51 @@ export default function Dojo({ session }) {
         }
     };
 
+    const fetchPhase1Sentence = async (targetWord) => {
+        try {
+            setAiError(null);
+            setIsGeneratingPhase1(true);
+            const prompt = `Write a single, complex IELTS Writing Task 2 sentence using the word '${targetWord}'. Replace the word '${targetWord}' with '_______'. Return ONLY the sentence, nothing else.`;
+
+            let text = await callDojoAI(prompt);
+            setPhase1Sentence(text.trim());
+            setTimer(15);
+        } catch (err) {
+            console.error("Phase 1 AI Generation Error:", err);
+            setAiError("Failed to generate combat scenario. Please try again.");
+            setPhase1Sentence("Failed to load scenario.");
+        } finally {
+            setIsGeneratingPhase1(false);
+        }
+    };
+
     // Auto-fetch if DB naturally lands us on Phase 2
     useEffect(() => {
         if (practiceBatch.length === 0 || isFinished || currentIndex >= practiceBatch.length) return;
 
         const currentItem = practiceBatch[currentIndex];
-        if (currentPhase === 2 && !gptQuestion && !isGenerating) {
+
+        if (currentPhase === 1 && !phase1Sentence && !isGeneratingPhase1) {
+            fetchPhase1Sentence(currentItem.word);
+        } else if (currentPhase === 2 && !gptQuestion && !isGenerating) {
             fetchContextQuestion(currentItem.word);
         }
     }, [currentPhase, currentIndex, practiceBatch, isFinished]);
+
+    // Timer Logic for Phase 1
+    useEffect(() => {
+        let interval = null;
+        if (currentPhase === 1 && !isGeneratingPhase1 && timer > 0 && !feedback) {
+            interval = setInterval(() => {
+                setTimer(prev => prev - 1);
+            }, 1000);
+        } else if (timer === 0 && currentPhase === 1 && !feedback) {
+            handleAnswer("TIMEOUT_FAIL");
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [currentPhase, isGeneratingPhase1, timer, feedback]);
 
     const handleAnswer = async (selectedWordOrEvent) => {
         let answer = selectedWordOrEvent;
@@ -229,7 +267,7 @@ export default function Dojo({ session }) {
 
         let isCorrect = false;
         if (currentPhase === 1) {
-            isCorrect = typeof answer === 'string' && answer.toLowerCase().trim() === currentItem.word.toLowerCase();
+            isCorrect = typeof answer === 'string' && answer.toLowerCase().trim() === currentItem.word.toLowerCase() && answer !== "TIMEOUT_FAIL";
         } else if (currentPhase === 2 && gptQuestion) {
             isCorrect = typeof answer === 'string' && answer.toLowerCase().trim() === gptQuestion.answer.toLowerCase();
         }
@@ -243,7 +281,11 @@ export default function Dojo({ session }) {
                 setSurvivingWords(prev => [...prev, currentItem]);
             }
         } else {
-            setFeedback("Incorrect! 🧊");
+            if (answer === "TIMEOUT_FAIL") {
+                setFeedback(`Time's up! Correct answer: ${currentItem.word} 🧊`);
+            } else {
+                setFeedback(`Incorrect! Correct answer: ${currentItem.word} 🧊`);
+            }
             dbNewLevel = Math.max(1, dbNewLevel - 1);
         }
 
@@ -272,6 +314,7 @@ export default function Dojo({ session }) {
             setUserSentence("");
             setAiFeedback(null);
             setGptQuestion(null);
+            setPhase1Sentence("");
 
             if (currentIndex + 1 < practiceBatch.length) {
                 setCurrentIndex(prev => prev + 1);
@@ -410,13 +453,13 @@ export default function Dojo({ session }) {
                     <span className="text-6xl mb-6 block">🏆</span>
                     <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-4">You are all caught up!</h2>
                     <p className="text-slate-500 dark:text-slate-400 font-medium text-lg max-w-lg mx-auto mb-8 leading-relaxed">
-                        Incredible work. Your recently trained words are resting right now to build your long-term memory. Take a break, or go to the Vault to add new words.
+                        Incredible work. Your recently trained words are resting right now to build your long-term memory. Take a break, or read a new Article to discover more vocabulary.
                     </p>
                     <button
                         onClick={() => window.location.href = '/'}
                         className="bg-orange-500 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-orange-600 hover:-translate-y-1 transition-all shadow-lg hover:shadow-orange-500/40"
                     >
-                        Return to Vault
+                        Browse Articles
                     </button>
                 </div>
             </div>
@@ -582,10 +625,44 @@ export default function Dojo({ session }) {
 
                 {currentPhase === 1 && (
                     <>
-                        <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-4">Phase 1: Definition Match</span>
-                        <p className="text-2xl lg:text-3xl font-medium text-slate-800 dark:text-white leading-snug">
-                            {maskText(currentItem.definition, currentItem.word) || "Definition not found for this word."}
-                        </p>
+                        <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-4">Phase 1: Contextual Combat</span>
+
+                        {/* Timer Bar */}
+                        <div className="w-full bg-slate-200 dark:bg-slate-700 h-3 rounded-full mb-6 overflow-hidden relative">
+                            <div
+                                className={`h-full transition-all duration-1000 ease-linear ${timer <= 5 ? 'bg-red-500' : 'bg-orange-500'}`}
+                                style={{ width: `${(timer / 15) * 100}%` }}
+                            ></div>
+                        </div>
+
+                        {aiError ? (
+                            <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 p-6 rounded-2xl border border-red-200 dark:border-red-800 text-center mb-4">
+                                <h3 className="font-bold mb-2">AI Generation Failed</h3>
+                                <p className="mb-4 text-sm">{aiError}</p>
+                                <button
+                                    onClick={() => fetchPhase1Sentence(currentItem.word)}
+                                    className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                                >
+                                    Try Again
+                                </button>
+                            </div>
+                        ) : isGeneratingPhase1 || !phase1Sentence ? (
+                            <div className="flex flex-col items-center justify-center space-y-4 py-8">
+                                <div className="flex items-center space-x-3 text-orange-500 animate-pulse">
+                                    <div className="w-6 h-6 border-t-2 border-b-2 border-orange-500 rounded-full animate-spin"></div>
+                                    <span className="font-bold">Generating combat scenario...</span>
+                                </div>
+                                <div className="w-full max-w-lg space-y-3">
+                                    <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded-full w-full animate-pulse"></div>
+                                    <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded-full w-5/6 mx-auto animate-pulse"></div>
+                                    <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded-full w-4/6 mx-auto animate-pulse"></div>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-2xl lg:text-3xl font-medium text-slate-800 dark:text-white leading-snug italic py-4">
+                                "{phase1Sentence}"
+                            </p>
+                        )}
                     </>
                 )}
 

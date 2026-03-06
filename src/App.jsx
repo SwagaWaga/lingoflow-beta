@@ -92,7 +92,7 @@ function App() {
               {/* Left: logo + desktop nav */}
               <div className="flex items-center space-x-4 md:space-x-8">
                 <div className="flex items-center space-x-2 md:space-x-3">
-                  <img src="/logo.png" alt="LingoFlow Globe Logo" className="w-8 h-8 md:w-10 md:h-10 object-contain drop-shadow-md" />
+                  <img src="/logo.png" alt="LingoFlow Globe Logo" className="w-8 h-8 md:w-10 md:h-10 object-cover aspect-square rounded-full border border-slate-700/50 shadow-sm" />
                   <h1 className="text-xl md:text-2xl font-black tracking-tight">
                     <span className="text-brand-teal">Lingo</span>
                     <span className="text-slate-800 dark:text-white">Flow</span>

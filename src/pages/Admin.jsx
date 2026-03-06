@@ -12,6 +12,43 @@ export default function Admin() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [quizQuestions, setQuizQuestions] = useState([]);
     const [statusMessage, setStatusMessage] = useState('');
+    const [loadingDefinitions, setLoadingDefinitions] = useState({});
+
+    const fetchDefinition = async (index) => {
+        const entry = dnaEntries[index];
+        const word = entry.word.trim();
+
+        if (!word) {
+            alert("Please enter a target word first.");
+            return;
+        }
+
+        if (entry.definition && entry.definition.trim().length > 0) {
+            return; // Skip if a definition already exists
+        }
+
+        setLoadingDefinitions(prev => ({ ...prev, [index]: true }));
+
+        try {
+            const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+
+            if (response.ok) {
+                const data = await response.json();
+
+                // Safely extract the first meaningful definition
+                if (data[0]?.meanings[0]?.definitions[0]?.definition) {
+                    const cleanDef = data[0].meanings[0].definitions[0].definition;
+                    handleEntryChange(index, "definition", cleanDef);
+                }
+            } else {
+                console.warn(`Definition not found for "${word}" (Status: ${response.status})`);
+            }
+        } catch (error) {
+            console.error("Error fetching dictionary definition:", error);
+        } finally {
+            setLoadingDefinitions(prev => ({ ...prev, [index]: false }));
+        }
+    };
 
     const handleEntryChange = (index, field, value) => {
         const newEntries = [...dnaEntries];
@@ -323,14 +360,32 @@ export default function Admin() {
                                         ✕
                                     </button>
                                 </div>
-                                <textarea
-                                    value={entry.definition || ''}
-                                    onChange={(e) => handleEntryChange(index, "definition", e.target.value)}
-                                    placeholder="Definition (Optional)"
-                                    rows="2"
-                                    className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
-                                    disabled={isSubmitting}
-                                />
+                                <div className="relative">
+                                    <textarea
+                                        value={entry.definition || ''}
+                                        onChange={(e) => handleEntryChange(index, "definition", e.target.value)}
+                                        placeholder="Definition (Optional)"
+                                        rows="2"
+                                        className="w-full p-3 pr-14 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+                                        disabled={isSubmitting}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => fetchDefinition(index)}
+                                        disabled={isSubmitting || loadingDefinitions[index]}
+                                        className="absolute right-3 top-3 p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50"
+                                        title="Generate dictionary definition"
+                                    >
+                                        {loadingDefinitions[index] ? (
+                                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                        ) : (
+                                            "✨"
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>

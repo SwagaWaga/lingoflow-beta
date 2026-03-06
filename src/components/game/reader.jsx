@@ -152,7 +152,7 @@ export default function Reader({ session }) {
       return;
     }
 
-    const contextSentence = extractSentence(fullText, word);
+    const contextString = extractSentence(fullText, word);
     setIsAnalyzingWord(true);
     setFeedback(`⏳ Analyzing: ${cleanWord}...`);
 
@@ -189,16 +189,11 @@ export default function Reader({ session }) {
           aiDefinition = dnaData.definition;
         }
 
-        // --- Step 2b: Free Dictionary API for Definition & Audio ---
+        // --- Step 2b: Free Dictionary API for Audio (definition removed) ---
         try {
           const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`);
           if (dictRes.ok) {
             const dictData = await dictRes.json();
-
-            // Safely extract first meaningful definition
-            if (!aiDefinition && dictData[0]?.meanings[0]?.definitions[0]?.definition) {
-              aiDefinition = dictData[0].meanings[0].definitions[0].definition;
-            }
 
             // Safely extract audio URL based on user preference
             if (dictData[0]?.phonetics && dictData[0].phonetics.length > 0) {
@@ -210,17 +205,17 @@ export default function Reader({ session }) {
             }
           }
         } catch (dictErr) {
-          console.warn("Free Dictionary API failed, falling back to basic definition.", dictErr);
+          console.warn("Free Dictionary API failed to get audio.", dictErr);
         }
 
-        // --- Step 2c: LLM Fallback for Definitions ---
+        // --- Step 2c: LLM for Contextual Definitions ---
         if (!aiDefinition) {
           try {
-            console.log("Free Dictionary API failed, falling back to LLM for definition...");
+            console.log("Generating context-aware definition via LLM...");
             const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
             const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-            const prompt = `You are an expert ESL (English as a Second Language) teacher preparing students for the IELTS exam. Provide a definition for the word or phrase: "${cleanWord}". You must use simple, clear, and everyday English (B1/B2 level vocabulary). Do NOT use overly complex academic jargon or circular definitions. Keep the definition concise—strictly under 15 words if possible. It must be easy to read on a small flashcard. Return ONLY the definition text without any markdown or quotes.`;
+            const prompt = `Act as an expert IELTS teacher. Look at the word '${cleanWord}' and read this specific sentence: '${contextString}'. Define the word EXACTLY as it is used in this specific context. If it is part of a phrase (like 'gray matter'), define the phrase. Keep the definition under 15 words, simple, and do not provide the standard dictionary definition if it conflicts with the context. Return ONLY the definition text without any markdown or quotes.`;
             const result = await model.generateContent(prompt);
             const text = result.response.text();
 
@@ -238,7 +233,7 @@ export default function Reader({ session }) {
 
       setCollectedWords(prev => [...prev, {
         word: cleanWord,
-        context: contextSentence,
+        context: contextString,
         definition: aiDefinition,
         dna_type: aiDnaType,
         audio_url: aiAudioUrl
