@@ -217,7 +217,7 @@ export default function Reader({ session }) {
         if (!aiDefinition) {
           try {
             console.log("Free Dictionary API failed, falling back to LLM for definition...");
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY_DOJO;
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
             const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
             const prompt = `You are an expert ESL (English as a Second Language) teacher preparing students for the IELTS exam. Provide a definition for the word or phrase: "${cleanWord}". You must use simple, clear, and everyday English (B1/B2 level vocabulary). Do NOT use overly complex academic jargon or circular definitions. Keep the definition concise—strictly under 15 words if possible. It must be easy to read on a small flashcard. Return ONLY the definition text without any markdown or quotes.`;

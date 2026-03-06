@@ -15,6 +15,35 @@ const maskText = (text, targetWord) => {
     return text.replace(regex, '_______');
 }
 
+const callDojoAI = async (prompt) => {
+    try {
+        const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY_DOJO);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const result = await model.generateContent(prompt);
+        return await result.response.text();
+    } catch (error) {
+        console.warn("Dojo AI Attempt 1 failed:", error.message);
+
+        const errorMsg = error.message?.toLowerCase() || '';
+        const isQuotaError = error.status === 429 || errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('too many requests');
+
+        if (isQuotaError) {
+            console.log("Quota exhausted. Switching to secondary fallback key (DOJO_2)...");
+            try {
+                const fallbackGenAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY_DOJO_2);
+                const fallbackModel = fallbackGenAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                const fallbackResult = await fallbackModel.generateContent(prompt);
+                return await fallbackResult.response.text();
+            } catch (fallbackError) {
+                console.error("Dojo AI Attempt 2 failed:", fallbackError);
+                throw new Error("The Dojo AI is currently resting to regain focus. Please try again in a moment.");
+            }
+        }
+
+        throw new Error("The Dojo AI is currently resting to regain focus. Please try again in a moment.");
+    }
+};
+
 export default function Dojo({ session }) {
     const [practiceBatch, setPracticeBatch] = useState(() => {
         const saved = localStorage.getItem('dojoSession');
@@ -26,7 +55,7 @@ export default function Dojo({ session }) {
     });
     const [currentPhase, setCurrentPhase] = useState(() => {
         const saved = localStorage.getItem('dojoSession');
-        return saved ? JSON.parse(saved).currentPhase : 1;
+        return saved ? JSON.parse(saved).currentPhase : 0;
     });
     const [survivingWords, setSurvivingWords] = useState(() => {
         const saved = localStorage.getItem('dojoSession');
@@ -35,9 +64,11 @@ export default function Dojo({ session }) {
     const [options, setOptions] = useState([]);
     const [isFinished, setIsFinished] = useState(false);
     const [textAnswer, setTextAnswer] = useState("");
-    const [insufficientWords, setInsufficientWords] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [trainedCount, setTrainedCount] = useState(0);
+
+    // Phase 0 encoding state
+    const [isRevealed, setIsRevealed] = useState(false);
 
     // AI Variables (Level 2)
     const [gptQuestion, setGptQuestion] = useState(null);
@@ -95,19 +126,21 @@ export default function Dojo({ session }) {
             try {
                 setLoading(true);
                 // 12 hours ago
-                const cooldownLimit = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+                const cooldownTime = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
 
                 const { data, error } = await supabase
                     .from('user_vocabulary')
                     .select('*')
                     .eq('user_id', session.user.id)
-                    .lt('mastery_level', 4) // Exclude fully Mastered words
-                    .or(`last_practiced.is.null,last_practiced.lte.${cooldownLimit}`) // SRS cooldown logic
+                    // TEMPORARILY DISABLED FOR DEBUGGING
+                    // .lt('mastery_level', 4) // Exclude fully Mastered words
+                    // .or('last_practiced.is.null,last_practiced.lte.' + cooldownTime) // SRS cooldown logic
                     .order('last_practiced', { ascending: true, nullsFirst: true }) // Oldest first, prioritizing unpracticed
                     .limit(5);
 
-                if (data && data.length < 4) {
-                    setInsufficientWords(true);
+                console.log("DOJO FETCH DEBUG -> Data:", data, "Error:", error);
+
+                if (!data || data.length === 0) {
                     setPracticeBatch([]);
                 } else {
                     setPracticeBatch(data || []);
@@ -155,22 +188,9 @@ export default function Dojo({ session }) {
         try {
             setAiError(null);
             setIsGenerating(true);
-            const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY_DOJO);
             const prompt = `You are an expert IELTS tutor. Create a C1-level fill-in-the-blank sentence for the target word '${targetWord}'. Replace the target word in the sentence with '______'. Generate 3 incorrect but grammatically plausible distractors. Return STRICTLY a JSON object with this exact structure: {"sentence": "...", "options": ["distractor1", "${targetWord}", "distractor2", "distractor3"], "answer": "${targetWord}"}. Do not include markdown formatting like \`\`\`json.`;
 
-            let text = "";
-            try {
-                // First attempt: The fast 2.5 model
-                const model15 = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-                const result = await model15.generateContent(prompt);
-                text = await result.response.text();
-            } catch (error) {
-                console.warn("2.5-flash failed, falling back to gemini-2.0-flash...", error.message);
-                // Fallback attempt: The universally available 2.0 model
-                const model10 = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-                const fallbackResult = await model10.generateContent(prompt);
-                text = await fallbackResult.response.text();
-            }
+            let text = await callDojoAI(prompt);
 
             // Sanitize in case the model ignored the markdown rule
             text = text.replace(/```json|```/g, '').trim();
@@ -228,14 +248,17 @@ export default function Dojo({ session }) {
         }
 
         // Update Database in background
-        if (session?.user?.id) {
+        if (session?.user?.id && currentItem?.word) {
             try {
+                const payload = {
+                    mastery_level: dbNewLevel || 1,
+                    last_practiced: new Date().toISOString()
+                };
+                console.log("Sending to DB:", payload);
+
                 await supabase
                     .from('user_vocabulary')
-                    .update({
-                        mastery_level: dbNewLevel,
-                        last_practiced: new Date().toISOString()
-                    })
+                    .update(payload)
                     .match({ user_id: session.user.id, word: currentItem.word });
             } catch (err) {
                 console.error("Failed to update data:", err);
@@ -302,7 +325,7 @@ export default function Dojo({ session }) {
         const confirmQuit = window.confirm("Are you sure you want to abandon this training session?");
         if (confirmQuit) {
             localStorage.removeItem('dojoSession');
-            setCurrentPhase(1);
+            setCurrentPhase(0);
             setCurrentIndex(0);
             setSurvivingWords([]);
             setPracticeBatch([]); // Trigger a fresh batch fetch
@@ -319,22 +342,12 @@ export default function Dojo({ session }) {
             setIsGrading(true);
             const prompt = `You are a helpful but strict IELTS tutor. The student must write an original sentence using the word '${currentItem.word}'. The word MUST be used with the exact same meaning it had in this original text: '${currentItem.context_sentence}'. Student's sentence: '${userSentence}'. Evaluate if the word is used correctly in that specific context and if the grammar is sound. Respond ONLY in strict JSON format like this: {"passed": true, "feedback": "Great job using it in a biological context!"} or {"passed": false, "feedback": "Grammar error, or you used the wrong definition of the word."}`;
 
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{ text: prompt }]
-                    }]
-                })
-            });
-
-            const data = await response.json();
+            let aiText = await callDojoAI(prompt);
 
             let resultJson = null;
 
-            if (data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text) {
-                let aiText = data.candidates[0].content.parts[0].text.trim();
+            if (aiText) {
+                aiText = aiText.trim();
                 // Strip markdown formatting if AI included it
                 if (aiText.startsWith('```json')) {
                     aiText = aiText.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -363,7 +376,7 @@ export default function Dojo({ session }) {
             console.error("Sentence grading error:", err);
             setAiFeedback({
                 passed: false,
-                feedback: "Failed to connect to grading server. Please try again."
+                feedback: err.message || "Failed to connect to grading server. Please try again."
             });
         } finally {
             setIsGrading(false);
@@ -385,26 +398,6 @@ export default function Dojo({ session }) {
                 <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 p-6 rounded-2xl border border-red-200 dark:border-red-800">
                     <h2 className="text-xl font-bold mb-2">Failed to load Training Data</h2>
                     <p>{error}</p>
-                </div>
-            </div>
-        );
-    }
-
-    if (insufficientWords) {
-        return (
-            <div className="max-w-4xl mx-auto p-6">
-                <div className="bg-white dark:bg-slate-800 p-12 rounded-3xl text-center shadow-lg border border-slate-100 dark:border-slate-700 transition-colors">
-                    <span className="text-6xl mb-6 block">📚</span>
-                    <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-4">Not Enough Words!</h2>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium text-lg max-w-lg mx-auto mb-8 leading-relaxed">
-                        You need at least 4 words in your Vault to enter the Dojo! Go read an article to collect more words.
-                    </p>
-                    <button
-                        onClick={() => window.location.href = '/'}
-                        className="bg-orange-500 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-orange-600 hover:-translate-y-1 transition-all shadow-lg hover:shadow-orange-500/40"
-                    >
-                        Back to Library
-                    </button>
                 </div>
             </div>
         );
@@ -510,6 +503,82 @@ export default function Dojo({ session }) {
 
             <div className="bg-white dark:bg-slate-800 p-10 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-700 mb-8 max-w-2xl mx-auto relative overflow-hidden group transition-colors">
                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-orange-400 to-red-500 opacity-80 group-hover:opacity-100 transition-opacity"></div>
+
+                {currentPhase === 0 && (
+                    <div className="flex flex-col items-center justify-center space-y-8 py-4">
+                        <span className="text-xs font-black text-blue-500 uppercase tracking-[0.2em] block mb-2">Phase 0: Memory Encoding</span>
+
+                        <div className="flex items-center space-x-4">
+                            <h2 className="text-5xl font-black text-slate-800 dark:text-white capitalize tracking-tight">
+                                {currentItem.word}
+                            </h2>
+                            <button
+                                onClick={() => {
+                                    const utterance = new SpeechSynthesisUtterance(currentItem.word);
+                                    utterance.lang = 'en-US';
+                                    window.speechSynthesis.speak(utterance);
+                                }}
+                                className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full hover:bg-blue-100 dark:hover:bg-slate-600 hover:text-blue-600 transition-colors shadow-sm"
+                                title="Pronounce"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7">
+                                    <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z" />
+                                    <path d="M15.932 7.757a.75.75 0 011.061 0 5.25 5.25 0 010 7.424.75.75 0 11-1.06-1.06 3.75 3.75 0 000-5.304.75.75 0 010-1.06z" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {!isRevealed ? (
+                            <button
+                                onClick={() => setIsRevealed(true)}
+                                className="px-8 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xl rounded-2xl shadow-lg hover:shadow-blue-500/40 transition-all active:scale-95"
+                            >
+                                Reveal Meaning
+                            </button>
+                        ) : (
+                            <div className="w-full text-left space-y-6 animate-fade-in">
+                                <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-100 dark:border-slate-700 rounded-2xl">
+                                    {currentItem.category && (
+                                        <span className="inline-block px-3 py-1 mb-3 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-200 dark:bg-slate-700 rounded-full uppercase tracking-wider">
+                                            {currentItem.category}
+                                        </span>
+                                    )}
+                                    <p className="text-xl font-medium text-slate-800 dark:text-slate-200 leading-relaxed mb-4">
+                                        <span className="font-bold text-slate-400 text-sm block uppercase tracking-wider mb-2">Definition</span>
+                                        {currentItem.definition}
+                                    </p>
+
+                                    {currentItem.context_sentence && (
+                                        <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                                            <span className="font-bold text-slate-400 text-sm block uppercase tracking-wider mb-2">Example Sentence</span>
+                                            <div className="pl-4 border-l-4 border-indigo-500">
+                                                <p className="text-lg text-slate-600 dark:text-slate-400 italic">
+                                                    "{currentItem.context_sentence}"
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button
+                                    onClick={() => {
+                                        if (currentIndex + 1 < practiceBatch.length) {
+                                            setCurrentIndex(prev => prev + 1);
+                                            setIsRevealed(false);
+                                        } else {
+                                            setCurrentPhase(1);
+                                            setCurrentIndex(0);
+                                            setIsRevealed(false);
+                                        }
+                                    }}
+                                    className="w-full px-8 py-4 bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white font-extrabold text-xl rounded-2xl shadow-lg hover:shadow-orange-500/40 transition-all active:scale-95 flex justify-center items-center"
+                                >
+                                    Next Word
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {currentPhase === 1 && (
                     <>
@@ -618,7 +687,7 @@ export default function Dojo({ session }) {
                 </div>
             ) : null}
 
-            {(currentPhase === 1 || currentPhase === 2) && (
+            {(currentPhase === 0 || currentPhase === 1 || currentPhase === 2) && (
                 <div className="mt-8 flex justify-center">
                     <button
                         onClick={handleAbandonRun}

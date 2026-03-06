@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export default function Admin() {
     const [title, setTitle] = useState('');
     const [category, setCategory] = useState('Life Sciences & Biology');
     const [difficulty, setDifficulty] = useState('Advanced');
     const [content, setContent] = useState('');
-    const [dnaEntries, setDnaEntries] = useState([{ word: "", category: "Lexicon", definition: "" }]);
+    const [bulkVocabContent, setBulkVocabContent] = useState('');
+    const [quizContent, setQuizContent] = useState('');
+    const [dnaEntries, setDnaEntries] = useState([{ word: "", category: "Lexicon", subject: "", definition: "" }]);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isExtracting, setIsExtracting] = useState(false);
     const [quizQuestions, setQuizQuestions] = useState([]);
-    const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
 
     const handleEntryChange = (index, field, value) => {
@@ -21,7 +20,7 @@ export default function Admin() {
     };
 
     const addEntry = () => {
-        setDnaEntries([...dnaEntries, { word: "", category: "Lexicon", definition: "" }]);
+        setDnaEntries([...dnaEntries, { word: "", category: "Lexicon", subject: "", definition: "" }]);
     };
 
     const removeEntry = (index) => {
@@ -29,106 +28,80 @@ export default function Admin() {
         setDnaEntries(newEntries);
     };
 
-    const handleAutoExtract = async () => {
-        if (!content.trim()) {
-            alert("Please paste the article content first before attempting to extract vocabulary.");
+    const handleBulkParse = () => {
+        if (!bulkVocabContent.trim()) {
+            alert("Please paste the bulk import content first.");
             return;
         }
 
-        try {
-            setIsExtracting(true);
-            setStatusMessage('');
+        const lines = bulkVocabContent.split('\n');
+        const parsedWords = [];
 
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY_DOJO;
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
 
-            const prompt = `You are an expert ESL (English as a Second Language) teacher preparing students for the IELTS exam. 
-Read the following article text and extract exactly 5 to 10 high-value, advanced vocabulary words or phrases.
-For each word, suggest an appropriate linguistic category. You MUST choose ONLY from the following categories:
-["Academic", "Technical", "Lexicon", "Collocation", "Grammar", "Idiom", "Advanced", "Basic", "Informal"]
-
-Whenever you provide a definition for a word, you must use simple, clear, and everyday English (B1/B2 level vocabulary). Do NOT use overly complex academic jargon or circular definitions. Keep the definition concise—strictly under 15 words if possible. It must be easy to read on a small flashcard.
-
-Return your response STRICTLY as a raw JSON array of objects without any markdown formatting wrappers.
-Example output format:
-[
-  {"word": "ubiquitous", "category": "Academic", "definition": "found or existing everywhere"},
-  {"word": "machine learning", "category": "Technical", "definition": "the use of data to allow computers to learn without being programmed"}
-]
-
-Article Text:
-${content}`;
-
-            const result = await model.generateContent(prompt);
-            let text = result.response.text();
-
-            // Cleanup markdown if the model hallucinates it
-            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
-            const parsedWords = JSON.parse(text);
-
-            if (Array.isArray(parsedWords)) {
-                // If the user only has one empty default row, overwrite it. Otherwise append.
-                if (dnaEntries.length === 1 && !dnaEntries[0].word.trim()) {
-                    setDnaEntries(parsedWords);
-                } else {
-                    setDnaEntries(prev => [...prev, ...parsedWords]);
-                }
+            const parts = line.split('|').map(p => p.trim());
+            if (parts.length >= 4 && parts[0] && parts[3]) {
+                parsedWords.push({
+                    word: parts[0],
+                    category: parts[1] || 'Lexicon',
+                    subject: parts[2] || '',
+                    definition: parts[3]
+                });
+            } else {
+                alert(`Syntax error on line ${i + 1}: incorrect format. Skipping.`);
             }
-        } catch (err) {
-            console.error("Auto-extract failed:", err);
-            alert("Failed to auto-extract vocabulary. Check console for details.");
-        } finally {
-            setIsExtracting(false);
+        }
+
+        if (parsedWords.length > 0) {
+            if (dnaEntries.length === 1 && !dnaEntries[0].word.trim()) {
+                setDnaEntries(parsedWords);
+            } else {
+                setDnaEntries(prev => [...prev, ...parsedWords]);
+            }
+            setBulkVocabContent('');
         }
     };
 
-    const handleGenerateQuiz = async () => {
-        if (!content.trim()) {
-            alert("Please paste the article content first before attempting to generate a quiz.");
+    const handleBulkQuizParse = () => {
+        if (!quizContent.trim()) {
+            alert("Please paste the bulk quiz import content first.");
             return;
         }
 
-        try {
-            setIsGeneratingQuiz(true);
-            setStatusMessage('');
+        const lines = quizContent.split('\n');
+        const parsedQuiz = [];
 
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY_DOJO;
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
 
-            const prompt = `You are an expert IELTS examiner.
-Read the following article text and generate 3 to 5 multiple-choice reading comprehension questions based on the text.
-
-The response MUST be a STRICT JSON array of objects.
-Each object must have this EXACT structure:
-{
-  "question": "The question text",
-  "options": ["Option A", "Option B", "Option C", "Option D"],
-  "correct_answer": "The exact string of the correct option",
-  "explanation": "A short sentence explaining why it is correct based on the text."
-}
-
-Do NOT wrap the response in markdown blocks like \`\`\`json. Return only the raw JSON array.
-
-Article Text:
-${content}`;
-
-            const result = await model.generateContent(prompt);
-            let text = result.response.text();
-
-            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            const parsedQuiz = JSON.parse(text);
-
-            if (Array.isArray(parsedQuiz)) {
-                setQuizQuestions(parsedQuiz);
+            const parts = line.split('|').map(p => p.trim());
+            // Need exactly 7 segments
+            if (parts.length >= 7) {
+                const correctOptionNumber = parseInt(parts[5], 10);
+                if (correctOptionNumber >= 1 && correctOptionNumber <= 4) {
+                    parsedQuiz.push({
+                        question: parts[0],
+                        options: [parts[1], parts[2], parts[3], parts[4]],
+                        // Option array is 0-indexed, but correctOptionNumber is 1-4.
+                        // Wait: index 1 was option 1 in the parts array. But options[] has it at index 0.
+                        // we can just map the string value using parts[correctOptionNumber] because correct option 1 is at index 1 of parts array.
+                        correct_answer: parts[correctOptionNumber],
+                        explanation: parts[6]
+                    });
+                } else {
+                    alert(`Syntax error on line ${i + 1}: Correct Option Number must be between 1 and 4. Skipping.`);
+                }
+            } else {
+                alert(`Syntax error on line ${i + 1}: Expected 7 segments but found ${parts.length}. Skipping.`);
             }
-        } catch (err) {
-            console.error("Quiz generation failed:", err);
-            alert("Failed to generate quiz. Check console for details.");
-        } finally {
-            setIsGeneratingQuiz(false);
+        }
+
+        if (parsedQuiz.length > 0) {
+            setQuizQuestions(prev => [...prev, ...parsedQuiz]);
+            setQuizContent(''); // Clear after successful parse
         }
     };
 
@@ -187,6 +160,7 @@ ${content}`;
                 if (cleanWord) {
                     acc[cleanWord] = {
                         category: current.category,
+                        subject: current.subject || "",
                         definition: current.definition || ""
                     };
                 }
@@ -205,7 +179,9 @@ ${content}`;
                 setCategory('Life Sciences & Biology');
                 setDifficulty('Advanced');
                 setContent('');
-                setDnaEntries([{ word: "", category: "Lexicon", definition: "" }]);
+                setQuizContent('');
+                setBulkVocabContent('');
+                setDnaEntries([{ word: "", category: "Lexicon", subject: "", definition: "" }]);
                 setQuizQuestions([]);
             }
         } catch (err) {
@@ -281,53 +257,30 @@ ${content}`;
                         className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm"
                         placeholder="Paste the full article content here..."
                         required
-                        disabled={isSubmitting || isExtracting}
+                        disabled={isSubmitting}
                     ></textarea>
                 </div>
 
                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
-                        <label className="block text-sm font-bold text-gray-700">Vocabulary DNA & Quiz Builder</label>
+                    <label className="block text-sm font-bold text-gray-700 mb-4">Vocabulary DNA Builder</label>
+
+                    <div className="mb-6 space-y-4">
+                        <textarea
+                            value={bulkVocabContent}
+                            onChange={(e) => setBulkVocabContent(e.target.value)}
+                            rows="4"
+                            className="w-full p-3 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-lg text-gray-800 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all shadow-sm"
+                            placeholder="Paste bulk words here using the format: Word | Category | Subject | Definition"
+                            disabled={isSubmitting}
+                        ></textarea>
                         <div className="flex flex-wrap gap-2">
                             <button
                                 type="button"
-                                onClick={handleAutoExtract}
-                                disabled={isSubmitting || isExtracting || isGeneratingQuiz || !content.trim()}
+                                onClick={handleBulkParse}
+                                disabled={isSubmitting || !bulkVocabContent.trim()}
                                 className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-bold rounded-xl shadow hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm hover:-translate-y-0.5"
                             >
-                                {isExtracting ? (
-                                    <>
-                                        <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        <span>Thinking...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <span>✨ Auto-Extract Vocabulary</span>
-                                    </>
-                                )}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleGenerateQuiz}
-                                disabled={isSubmitting || isExtracting || isGeneratingQuiz || !content.trim()}
-                                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold rounded-xl shadow hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm hover:-translate-y-0.5"
-                            >
-                                {isGeneratingQuiz ? (
-                                    <>
-                                        <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        <span>Generating...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <span>📝 Generate Article Quiz</span>
-                                    </>
-                                )}
+                                <span>⚡ Parse Bulk Import</span>
                             </button>
                         </div>
                     </div>
@@ -342,13 +295,13 @@ ${content}`;
                                         onChange={(e) => handleEntryChange(index, "word", e.target.value)}
                                         placeholder="Target Word"
                                         className="flex-1 p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
-                                        disabled={isSubmitting || isExtracting}
+                                        disabled={isSubmitting}
                                     />
                                     <select
                                         value={entry.category}
                                         onChange={(e) => handleEntryChange(index, "category", e.target.value)}
                                         className="w-40 p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm appearance-none"
-                                        disabled={isSubmitting || isExtracting}
+                                        disabled={isSubmitting}
                                     >
                                         <option value="Academic">Academic</option>
                                         <option value="Technical">Technical</option>
@@ -365,7 +318,7 @@ ${content}`;
                                         onClick={() => removeEntry(index)}
                                         className="w-12 h-12 flex items-center justify-center bg-white dark:bg-slate-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/40 hover:text-red-700 border border-gray-200 dark:border-slate-700 hover:border-red-200 rounded-xl font-bold transition-all shadow-sm shrink-0"
                                         title="Remove word"
-                                        disabled={isSubmitting || isExtracting}
+                                        disabled={isSubmitting}
                                     >
                                         ✕
                                     </button>
@@ -376,7 +329,7 @@ ${content}`;
                                     placeholder="Definition (Optional)"
                                     rows="2"
                                     className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
-                                    disabled={isSubmitting || isExtracting}
+                                    disabled={isSubmitting}
                                 />
                             </div>
                         ))}
@@ -385,7 +338,7 @@ ${content}`;
                         type="button"
                         onClick={addEntry}
                         className="mt-4 px-4 py-2 bg-white text-blue-600 hover:bg-blue-50 hover:text-blue-700 border border-gray-200 hover:border-blue-200 rounded-lg text-sm font-bold transition-all shadow-sm"
-                        disabled={isSubmitting || isExtracting}
+                        disabled={isSubmitting}
                     >
                         + Add Word
                     </button>
@@ -394,6 +347,28 @@ ${content}`;
                 {/* Article Quiz Builder UI */}
                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner mt-6">
                     <label className="block text-sm font-bold text-gray-700 mb-4">Article Quiz Builder</label>
+
+                    <div className="mb-6 space-y-4">
+                        <textarea
+                            value={quizContent}
+                            onChange={(e) => setQuizContent(e.target.value)}
+                            rows="4"
+                            className="w-full p-4 border border-gray-300 rounded-xl bg-white text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all shadow-sm"
+                            placeholder="Question | Option 1 | Option 2 | Option 3 | Option 4 | Correct Option Number (1-4) | Explanation"
+                            disabled={isSubmitting}
+                        ></textarea>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={handleBulkQuizParse}
+                                disabled={isSubmitting || !quizContent.trim()}
+                                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold rounded-xl shadow hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm hover:-translate-y-0.5"
+                            >
+                                <span>⚡ Parse Quiz Import</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <div className="space-y-6">
                         {quizQuestions.map((q, qIndex) => (
                             <div key={qIndex} className="p-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-sm relative">
@@ -402,7 +377,7 @@ ${content}`;
                                     onClick={() => removeQuizQuestion(qIndex)}
                                     className="absolute -top-3 -right-3 w-8 h-8 flex items-center justify-center bg-white dark:bg-slate-800 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/40 hover:text-red-700 border border-gray-200 dark:border-slate-700 hover:border-red-200 rounded-full font-bold transition-all shadow-md z-10"
                                     title="Remove Question"
-                                    disabled={isSubmitting || isGeneratingQuiz}
+                                    disabled={isSubmitting}
                                 >
                                     ✕
                                 </button>
@@ -416,7 +391,7 @@ ${content}`;
                                             onChange={(e) => handleQuizChange(qIndex, "question", e.target.value)}
                                             placeholder="Enter the question text"
                                             className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 shadow-sm"
-                                            disabled={isSubmitting || isGeneratingQuiz}
+                                            disabled={isSubmitting}
                                         />
                                     </div>
 
@@ -430,7 +405,7 @@ ${content}`;
                                                     onChange={(e) => handleQuizOptionChange(qIndex, optIndex, e.target.value)}
                                                     placeholder={`Option ${optIndex + 1}`}
                                                     className="flex-1 p-2.5 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 shadow-sm text-sm"
-                                                    disabled={isSubmitting || isGeneratingQuiz}
+                                                    disabled={isSubmitting}
                                                 />
                                             </div>
                                         ))}
@@ -443,7 +418,7 @@ ${content}`;
                                                 value={q.correct_answer}
                                                 onChange={(e) => handleQuizChange(qIndex, "correct_answer", e.target.value)}
                                                 className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 shadow-sm appearance-none text-sm"
-                                                disabled={isSubmitting || isGeneratingQuiz}
+                                                disabled={isSubmitting}
                                             >
                                                 <option value="" disabled>Select correct option...</option>
                                                 {q.options.filter(o => o.trim()).map((opt, i) => (
@@ -459,7 +434,7 @@ ${content}`;
                                                 onChange={(e) => handleQuizChange(qIndex, "explanation", e.target.value)}
                                                 placeholder="Explanation for the correct answer"
                                                 className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 shadow-sm text-sm"
-                                                disabled={isSubmitting || isGeneratingQuiz}
+                                                disabled={isSubmitting}
                                             />
                                         </div>
                                     </div>
@@ -472,7 +447,7 @@ ${content}`;
                         type="button"
                         onClick={addQuizQuestion}
                         className="mt-6 px-4 py-2 bg-white text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 border border-gray-200 hover:border-emerald-200 rounded-lg text-sm font-bold transition-all shadow-sm"
-                        disabled={isSubmitting || isGeneratingQuiz}
+                        disabled={isSubmitting}
                     >
                         + Add Question
                     </button>

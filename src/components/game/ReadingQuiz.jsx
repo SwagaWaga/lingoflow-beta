@@ -4,19 +4,19 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
     const [questions, setQuestions] = useState(propQuestions && propQuestions.length > 0 ? propQuestions : (article?.content_data?.quiz || []));
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [selectedAnswer, setSelectedAnswer] = useState(null);
-    const [showExplanation, setShowExplanation] = useState(false);
+    const [isAnswered, setIsAnswered] = useState(false);
 
     const handleOptionClick = (option) => {
-        if (selectedAnswer !== null) return; // Prevent multiple clicks
+        if (isAnswered) return; // Prevent multiple clicks
         setSelectedAnswer(option);
-        setShowExplanation(true);
+        setIsAnswered(true);
     };
 
     const handleNext = () => {
         if (currentQuestionIndex < questions.length - 1) {
             setCurrentQuestionIndex(prev => prev + 1);
             setSelectedAnswer(null);
-            setShowExplanation(false);
+            setIsAnswered(false);
         } else {
             if (onComplete) onComplete();
         }
@@ -39,7 +39,9 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
     }
 
     const currentQuestion = questions[currentQuestionIndex];
-    const isCorrect = selectedAnswer === currentQuestion.answer;
+    const isCorrect = (selectedAnswer || '').trim() === (currentQuestion.correct_answer || currentQuestion.answer || '').trim();
+
+    console.log("Current Question Data:", currentQuestion);
 
     return (
         <div className="max-w-3xl mx-auto p-4 md:p-6 font-sans">
@@ -67,13 +69,16 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
                     {currentQuestion.options.map((option, idx) => {
                         let buttonStyle = "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300";
 
-                        if (showExplanation) {
-                            if (option === currentQuestion.answer) {
-                                buttonStyle = "bg-green-100 dark:bg-green-900/40 border-green-500 dark:border-green-600 text-green-900 dark:text-green-200 ring-2 ring-green-200 dark:ring-green-900 font-bold";
-                            } else if (option === selectedAnswer) {
-                                buttonStyle = "bg-red-100 dark:bg-red-900/40 border-red-500 dark:border-red-600 text-red-900 dark:text-red-200 font-bold";
+                        if (isAnswered) {
+                            const isThisCorrect = (option || '').trim() === (currentQuestion.correct_answer || currentQuestion.answer || '').trim();
+                            const isThisSelected = (selectedAnswer || '').trim() === (option || '').trim();
+
+                            if (isThisCorrect) {
+                                buttonStyle = "bg-green-900/60 border-green-500 text-green-100 font-bold";
+                            } else if (isThisSelected && !isThisCorrect) {
+                                buttonStyle = "bg-red-900/60 border-red-500 text-red-100 line-through opacity-70";
                             } else {
-                                buttonStyle = "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-400 dark:text-slate-500 opacity-50 cursor-not-allowed";
+                                buttonStyle = "opacity-50 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800";
                             }
                         }
 
@@ -81,11 +86,11 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
                             <button
                                 key={idx}
                                 onClick={() => handleOptionClick(option)}
-                                disabled={showExplanation}
-                                className={`w-full text-left p-4 md:p-4 py-4 rounded-xl border-2 font-medium transition-all ${buttonStyle} disabled:cursor-auto`}
+                                disabled={isAnswered}
+                                className={`w-full text-left p-4 md:p-4 py-4 rounded-xl border-2 font-medium transition-all ${buttonStyle} disabled:cursor-not-allowed`}
                             >
                                 <div className="flex items-center">
-                                    <span className="w-9 h-9 md:w-8 md:h-8 rounded-full bg-white dark:bg-slate-600 shadow-sm flex items-center justify-center font-bold mr-3 md:mr-4 text-slate-500 dark:text-slate-300 flex-shrink-0 text-sm">
+                                    <span className="w-9 h-9 md:w-8 md:h-8 rounded-full bg-white dark:bg-slate-600/50 shadow-sm flex items-center justify-center font-bold mr-3 md:mr-4 flex-shrink-0 text-sm opacity-90">
                                         {String.fromCharCode(65 + idx)}
                                     </span>
                                     <span className="leading-snug text-sm md:text-base">{option}</span>
@@ -96,27 +101,25 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
                 </div>
             </div>
 
-            {showExplanation && (
+            {isAnswered && (
                 <div className={`p-4 md:p-6 rounded-xl md:rounded-2xl mb-6 md:mb-8 animate-fade-in-up border ${isCorrect
-                        ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-200'
-                        : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200'
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-200'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200'
                     }`}>
                     <div className="flex items-center mb-2 md:mb-3">
                         <span className="text-xl md:text-2xl mr-2">{isCorrect ? '✅' : '❌'}</span>
                         <h3 className="font-bold text-base md:text-lg">{isCorrect ? 'Correct!' : 'Incorrect'}</h3>
                     </div>
-                    {!isCorrect && (
-                        <p className="font-bold mb-1 md:mb-2 text-sm md:text-base">
-                            Correct Answer: <span className="underline decoration-2">{currentQuestion.answer}</span>
+
+                    <div className="bg-slate-800 border-l-4 border-blue-500 p-4 mt-4 text-slate-300 rounded shadow-sm">
+                        <p className="leading-relaxed font-medium text-sm md:text-base">
+                            {currentQuestion.explanation}
                         </p>
-                    )}
-                    <p className="opacity-90 leading-relaxed font-medium text-sm md:text-base">
-                        {currentQuestion.explanation}
-                    </p>
+                    </div>
                 </div>
             )}
 
-            {showExplanation && (
+            {isAnswered && (
                 <button
                     onClick={handleNext}
                     className="w-full py-4 bg-blue-600 text-white font-extrabold text-lg rounded-2xl shadow-lg hover:-translate-y-1 hover:shadow-blue-500/40 transition-all hover:bg-blue-700"
