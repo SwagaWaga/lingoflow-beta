@@ -604,12 +604,12 @@ export default function Dojo({ session }) {
     return (
         <div className="max-w-4xl mx-auto p-6 font-sans">
             <div className="flex justify-between items-center mb-8 px-4">
-                <div className="bg-slate-100 dark:bg-slate-800/80 px-6 py-2 rounded-full border border-slate-200 dark:border-slate-700/50 font-bold text-slate-500 dark:text-slate-400 text-sm tracking-widest uppercase">
+                <div className="bg-surface-raised px-6 py-2 rounded-full border border-border font-bold text-text-muted text-sm tracking-widest uppercase">
                     Phase {currentPhase}: Round {currentIndex + 1} / {practiceBatch.length}
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] shadow-xl border border-slate-200 dark:border-slate-800 mb-8 max-w-2xl mx-auto relative overflow-hidden group transition-colors duration-300">
+            <div className="bg-surface p-10 rounded-[2.5rem] shadow-xl border border-border mb-8 max-w-2xl mx-auto relative overflow-hidden group transition-colors duration-300">
                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-orange-400 to-red-500 opacity-80 group-hover:opacity-100 transition-opacity"></div>
 
                 {currentPhase === 0 && (

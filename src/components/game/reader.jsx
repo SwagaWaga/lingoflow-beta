@@ -293,8 +293,8 @@ export default function Reader({ session }) {
       <div className="p-8 font-sans">
         <div className="w-full">
           <div className="mb-8">
-            <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight mb-1">Choose a Subject</h2>
-            <p className="text-slate-500 dark:text-slate-400 font-medium">Pick a topic you're curious about to find reading materials.</p>
+            <h2 className="text-3xl font-black text-text-primary tracking-tight mb-1">Choose a Subject</h2>
+            <p className="text-text-muted font-medium">Pick a topic you're curious about to find reading materials.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {IELTS_SUBJECTS.map((subject, index) => {
@@ -354,8 +354,8 @@ export default function Reader({ session }) {
         </button>
 
         <div className="mb-4">
-          <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">{selectedSubject}</h2>
-          <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">{currentSubjectArticles.length} article{currentSubjectArticles.length !== 1 ? 's' : ''} available</p>
+          <h2 className="text-3xl font-black text-text-primary tracking-tight">{selectedSubject}</h2>
+          <p className="text-text-muted font-medium mt-1">{currentSubjectArticles.length} article{currentSubjectArticles.length !== 1 ? 's' : ''} available</p>
         </div>
 
         {/* Filter Bar */}
@@ -390,11 +390,11 @@ export default function Reader({ session }) {
             <button
               key={art.id}
               onClick={() => setSelectedArticleId(art.id)}
-              className="group flex flex-col md:flex-row md:items-center justify-between bg-slate-800/60 p-5 rounded-2xl border border-slate-700/50 hover:border-slate-500/80 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 ease-in-out text-left hover:-translate-y-0.5 active:scale-[0.99]"
+              className="group flex flex-col md:flex-row md:items-center justify-between bg-surface p-5 rounded-2xl border border-border hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-lg transition-all duration-200 ease-in-out text-left hover:-translate-y-0.5 active:scale-[0.99]"
             >
               <div>
-                <h3 className="text-lg font-black text-slate-100 mb-1 group-hover:text-blue-400 transition-colors">{art.title}</h3>
-                <p className="text-sm text-slate-500 font-semibold uppercase tracking-wide">Reading Module</p>
+                <h3 className="text-lg font-black text-text-primary mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{art.title}</h3>
+                <p className="text-sm text-text-muted font-semibold uppercase tracking-wide">Reading Module</p>
               </div>
 
               <div className="mt-4 md:mt-0 flex items-center space-x-3">

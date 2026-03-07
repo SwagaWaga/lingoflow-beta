@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import Reader from './components/game/reader';
 import Auth from './components/Auth';
 import Admin from './pages/Admin';
@@ -19,17 +19,8 @@ function App() {
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [currentView, setCurrentView] = useState('game');
   const [dailyStreak, setDailyStreak] = useState(0);
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('lf-dark') === 'true');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { preferredAccent, setPreferredAccent } = useAccent();
-
-  useEffect(() => {
-    const root = document.documentElement;
-    isDark ? root.classList.add('dark') : root.classList.remove('dark');
-    localStorage.setItem('lf-dark', isDark);
-  }, [isDark]);
-
-  const toggleDark = useCallback(() => setIsDark(prev => !prev), []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -68,14 +59,14 @@ function App() {
 
   if (isCheckingSession) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center transition-colors duration-300">
-        <div className="animate-pulse text-blue-600 dark:text-blue-400 font-bold text-xl">Loading LingoFlow...</div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="animate-pulse text-blue-400 font-bold text-xl">Loading LingoFlow...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center relative overflow-hidden transition-colors duration-300">
+    <div className="min-h-screen bg-bg flex flex-col items-center relative overflow-hidden transition-colors duration-300">
       <FloatingWords />
 
       {!session ? (
@@ -86,7 +77,7 @@ function App() {
         <div className="w-full flex flex-col items-center relative z-10">
 
           {/* ── Navbar ── */}
-          <header className="w-full sticky top-0 z-50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-md dark:shadow-black/20 transition-colors duration-300">
+          <header className="w-full sticky top-0 z-50 bg-surface/90 backdrop-blur-md border-b border-border shadow-sm dark:shadow-md dark:shadow-black/20 transition-colors duration-300">
             <div className="max-w-6xl mx-auto flex justify-between items-center px-4 md:px-8 py-3 md:py-4">
 
               {/* Left: logo + desktop nav */}
@@ -139,14 +130,6 @@ function App() {
                   </select>
                 </div>
 
-                {/* Dark Mode Toggle */}
-                <button
-                  onClick={toggleDark}
-                  title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                  className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all duration-200 text-base md:text-lg"
-                >
-                  {isDark ? '☀️' : '🌙'}
-                </button>
 
                 {/* Email pill — hidden on mobile */}
                 <span className="hidden lg:block text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 truncate max-w-[160px]">
