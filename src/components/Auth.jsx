@@ -58,7 +58,7 @@ export default function Auth() {
             <div className="w-full max-w-md space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-gray-100">
                 <div className="text-center">
                     <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-gray-900">
-                        Welcome to LingoFlow
+                        Welcome to Axiom
                     </h2>
                     <p className="mt-2 text-sm text-gray-600">
                         Sign in or create an account to save your progress

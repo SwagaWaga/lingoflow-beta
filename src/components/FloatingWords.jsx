@@ -11,7 +11,7 @@ const WORDS = [
     // IELTS / Academic terms
     'Academic', 'Analysis', 'Thesis', 'Evidence', 'Argument', 'Evaluate',
     'Interpret', 'Synthesize', 'Annotate', 'Abstract', 'Paraphrase', 'Citation',
-    // LingoFlow rank titles
+    // Axiom rank titles
     'Initiate', 'Scholar', 'Undergraduate', 'Researcher', 'Doctoral',
     'Professor', 'Laureate',
     // Motivational

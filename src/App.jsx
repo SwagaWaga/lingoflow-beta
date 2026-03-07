@@ -5,6 +5,7 @@ import Admin from './pages/Admin';
 import Dictionary from './pages/Dictionary';
 import Dojo from './pages/Dojo';
 import FloatingWords from './components/FloatingWords';
+import AxiomLogo from './components/AxiomLogo';
 import { supabase } from './lib/supabaseClient';
 import { useAccent } from './context/AccentContext';
 
@@ -60,7 +61,7 @@ function App() {
   if (isCheckingSession) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="animate-pulse text-blue-400 font-bold text-xl">Loading LingoFlow...</div>
+        <div className="animate-pulse text-blue-400 font-bold text-xl">Loading Axiom...</div>
       </div>
     );
   }
@@ -83,11 +84,10 @@ function App() {
               {/* Left: logo + desktop nav */}
               <div className="flex items-center space-x-4 md:space-x-8">
                 <div className="flex items-center space-x-2 md:space-x-3">
-                  <img src="/logo.png" alt="LingoFlow Globe Logo" className="w-8 h-8 md:w-10 md:h-10 object-cover aspect-square rounded-full border border-slate-700/50 shadow-sm" />
-                  <h1 className="text-xl md:text-2xl font-black tracking-tight">
-                    <span className="text-brand-teal">Lingo</span>
-                    <span className="text-slate-800 dark:text-white">Flow</span>
-                  </h1>
+                  <div className="flex items-center gap-2.5">
+                    <AxiomLogo className="w-8 h-8" />
+                    <span className="text-lg font-extrabold tracking-widest uppercase text-slate-100 hidden sm:block">AXIOM</span>
+                  </div>
                 </div>
                 {/* Desktop nav */}
                 <nav className="hidden md:flex items-center space-x-1 py-1">
@@ -214,7 +214,7 @@ function App() {
                   <div className="flex-1 min-w-0">
                     <p className="text-blue-400 font-bold text-xs md:text-sm uppercase tracking-widest mb-1">Welcome back 👋</p>
                     <h2 className="text-2xl md:text-4xl font-black text-white tracking-tight leading-tight mb-1 md:mb-2">
-                      Ready to expand your vocabulary?
+                      Master words with Axiom.
                     </h2>
                     <p className="text-slate-400 font-medium text-sm md:text-lg max-w-lg">
                       Select a subject, read an article, and collect words to train in the Dojo.
