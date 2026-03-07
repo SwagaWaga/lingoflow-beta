@@ -3,28 +3,19 @@ import { supabase } from '../../lib/supabaseClient';
 import SmartReview from './SmartReview';
 import ReadingQuiz from './ReadingQuiz';
 import { useAccent } from '../../context/AccentContext';
+import { playHover, playClick } from '../../hooks/useUISounds';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const CATEGORY_COLORS = [
-  'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300',
-  'bg-sky-50 text-sky-800 border-sky-200 hover:bg-sky-100 hover:border-sky-300',
-  'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300',
-  'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 hover:border-amber-300',
-  'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100 hover:border-rose-300',
-  'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100 hover:border-purple-300'
+const AXIOM_SUBJECTS = [
+  { name: 'Science', icon: '🔬' },
+  { name: 'Technology', icon: '💻' },
+  { name: 'Psychology', icon: '🧠' },
+  { name: 'Environment', icon: '🌍' },
+  { name: 'Society', icon: '🏛️' },
+  { name: 'Business', icon: '📊' },
+  { name: 'Economics', icon: '📈' },
 ];
 
-const IELTS_SUBJECTS = [
-  { name: 'Science', icon: '🔬', subSubjects: ['Biology', 'Physics', 'Health'] },
-  { name: 'Technology', icon: '💻', subSubjects: ['AI', 'Innovation', 'Engineering'] },
-  { name: 'Psychology', icon: '🧠', subSubjects: ['Behavior', 'Cognition', 'Mind'] },
-  { name: 'Environment', icon: '🌍', subSubjects: ['Climate', 'Ecology', 'Nature'] },
-  { name: 'Society', icon: '🏛️', subSubjects: ['Culture', 'History', 'Politics'] }
-];
-
-function getCategoryColor(index) {
-  return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
-}
 
 export default function Reader({ session }) {
   const { preferredAccent } = useAccent();
@@ -297,32 +288,26 @@ export default function Reader({ session }) {
             <p className="text-text-muted font-medium">Pick a topic you're curious about to find reading materials.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {IELTS_SUBJECTS.map((subject, index) => {
+            {AXIOM_SUBJECTS.map((subject) => {
               const articleCount = allArticles.filter(a => a.category === subject.name).length;
               return (
                 <button
                   key={subject.name}
-                  onClick={() => setSelectedSubject(subject.name)}
-                  className="group flex flex-col items-start justify-between min-h-48 h-full p-7 rounded-2xl border transition-all duration-200 ease-in-out cursor-pointer bg-slate-800/60 border-slate-700/50 hover:-translate-y-1.5 hover:shadow-xl hover:shadow-black/30 hover:border-slate-500/80 active:scale-95 shadow-sm"
+                  onClick={() => { playClick(); setSelectedSubject(subject.name); }}
+                  onMouseEnter={playHover}
+                  className="group flex flex-col items-start justify-between min-h-40 h-full p-7 rounded-2xl border transition-all duration-200 ease-in-out cursor-pointer bg-slate-900 border-slate-800 hover:border-slate-700 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/30 active:scale-95 shadow-sm"
                 >
                   <div className="w-full text-left flex flex-col h-full">
                     <span className="text-4xl mb-4 block drop-shadow-sm transition-transform duration-300 group-hover:scale-110">{subject.icon}</span>
                     <div className="flex-grow">
-                      <span className="font-black text-lg leading-tight block mb-1 text-slate-100">{subject.name}</span>
-                      <span className="text-sm font-semibold text-slate-400">
+                      <span className="font-black text-lg leading-tight block mb-1.5 text-slate-100">{subject.name}</span>
+                      <span className={`text-sm font-semibold ${articleCount > 0 ? 'text-cyan-400' : 'text-slate-500'}`}>
                         {articleCount} Article{articleCount !== 1 ? 's' : ''}
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-2 mt-3 w-full">
-                      {[...(subject.subSubjects || [])].sort((a, b) => a.localeCompare(b)).map(sub => (
-                        <span key={sub} className="text-xs px-2 py-1 rounded-full font-medium border bg-slate-900/60 border-slate-600/60 text-slate-400 group-hover:border-slate-500 group-hover:text-slate-300 transition-colors">
-                          {sub}
-                        </span>
-                      ))}
-                    </div>
                   </div>
                 </button>
-              )
+              );
             })}
           </div>
         </div>

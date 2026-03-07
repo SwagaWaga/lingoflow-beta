@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Reader from './components/game/reader';
 import Auth from './components/Auth';
 import Admin from './pages/Admin';
@@ -6,8 +6,11 @@ import Dictionary from './pages/Dictionary';
 import Dojo from './pages/Dojo';
 import FloatingWords from './components/FloatingWords';
 import AxiomLogo from './components/AxiomLogo';
+import ChangelogPanel from './components/ChangelogPanel';
+import OnboardingModal from './components/OnboardingModal';
 import { supabase } from './lib/supabaseClient';
 import { useAccent } from './context/AccentContext';
+import { playHover, playClick } from './hooks/useUISounds';
 
 const NAV_ITEMS = [
   { key: 'game', label: '📖 Play' },
@@ -21,6 +24,23 @@ function App() {
   const [currentView, setCurrentView] = useState('game');
   const [dailyStreak, setDailyStreak] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  const handleCloseChangelog = useCallback(() => setIsChangelogOpen(false), []);
+
+  // Show tutorial once per device
+  useEffect(() => {
+    if (!localStorage.getItem('axiom_tutorial_seen')) {
+      setShowTutorial(true);
+    }
+  }, []);
+
+  const handleCloseTutorial = useCallback(() => {
+    localStorage.setItem('axiom_tutorial_seen', 'true');
+    setShowTutorial(false);
+  }, []);
+
   const { preferredAccent, setPreferredAccent } = useAccent();
 
   useEffect(() => {
@@ -94,7 +114,8 @@ function App() {
                   {navItems.map(({ key, label }) => (
                     <button
                       key={key}
-                      onClick={() => handleNavClick(key)}
+                      onClick={() => { playClick(); handleNavClick(key); }}
+                      onMouseEnter={playHover}
                       style={{ transitionTimingFunction: 'cubic-bezier(0.25,0.8,0.25,1)' }}
                       className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 transform origin-center hover:scale-110 hover:mx-2 active:scale-95 ${currentView === key
                         ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20 scale-105 mx-1'
@@ -143,6 +164,40 @@ function App() {
                 >
                   Log Out
                 </button>
+
+                {/* What's New / Changelog trigger */}
+                <button
+                  onClick={() => { playClick(); setIsChangelogOpen(o => !o); }}
+                  onMouseEnter={playHover}
+                  className={`relative w-9 h-9 flex items-center justify-center rounded-lg border transition-all duration-200 hover:scale-110 active:scale-95
+                    ${isChangelogOpen
+                      ? 'bg-blue-500/15 border-blue-500/40 text-blue-400'
+                      : 'bg-slate-800/60 border-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-700/80 hover:border-slate-600'
+                    }`}
+                  aria-label="What's New"
+                  title="What's New"
+                >
+                  <span className="text-base leading-none">✨</span>
+                  {/* Pulse dot for latest release */}
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-blue-400 border border-slate-900 animate-pulse" />
+                </button>
+
+                {/* Help / Tutorial trigger */}
+                <button
+                  onClick={() => { playClick(); setShowTutorial(true); }}
+                  onMouseEnter={playHover}
+                  className="w-9 h-9 flex items-center justify-center rounded-lg border transition-all duration-200 hover:scale-110 active:scale-95
+                    bg-slate-800/60 border-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-700/80 hover:border-slate-600"
+                  aria-label="Help"
+                  title="Getting Started"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <path d="M12 17h.01" />
+                  </svg>
+                </button>
+
 
                 {/* Hamburger — mobile only */}
                 <button
@@ -239,6 +294,16 @@ function App() {
 
           </main>
         </div>
+      )}
+
+      {/* ── Global Changelog Panel (rendered outside layout for full-screen overlay) ── */}
+      {session && (
+        <ChangelogPanel isOpen={isChangelogOpen} onClose={handleCloseChangelog} />
+      )}
+
+      {/* ── Onboarding Tutorial Modal (shown once per device) ── */}
+      {session && (
+        <OnboardingModal isOpen={showTutorial} onClose={handleCloseTutorial} />
       )}
     </div>
   );
