@@ -604,12 +604,12 @@ export default function Dojo({ session }) {
     return (
         <div className="max-w-4xl mx-auto p-6 font-sans">
             <div className="flex justify-between items-center mb-8 px-4">
-                <div className="bg-white dark:bg-slate-800 px-6 py-2 rounded-full shadow-sm border border-slate-200 dark:border-slate-700 font-bold text-slate-500 dark:text-slate-300 text-sm tracking-widest uppercase transition-colors">
+                <div className="bg-slate-100 dark:bg-slate-800/80 px-6 py-2 rounded-full border border-slate-200 dark:border-slate-700/50 font-bold text-slate-500 dark:text-slate-400 text-sm tracking-widest uppercase">
                     Phase {currentPhase}: Round {currentIndex + 1} / {practiceBatch.length}
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 p-10 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-700 mb-8 max-w-2xl mx-auto relative overflow-hidden group transition-colors">
+            <div className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] shadow-xl border border-slate-200 dark:border-slate-800 mb-8 max-w-2xl mx-auto relative overflow-hidden group transition-colors duration-300">
                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-orange-400 to-red-500 opacity-80 group-hover:opacity-100 transition-opacity"></div>
 
                 {currentPhase === 0 && (
@@ -771,7 +771,7 @@ export default function Dojo({ session }) {
                 {currentPhase === 3 && !aiFeedback && (
                     <div className="flex flex-col gap-4">
                         <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-2">Phase 3: Active Production</span>
-                        <p className="text-xl font-medium text-slate-800 dark:text-white leading-snug mb-4">
+                        <p className="text-xl font-medium text-slate-700 dark:text-white leading-snug mb-4">
                             Write an IELTS-style sentence using the word: <span className="font-black text-blue-600 dark:text-blue-400 capitalize">'{currentItem.word}'</span>
                         </p>
                         <form onSubmit={handleGradeSentence} className="flex flex-col gap-4">
@@ -824,7 +824,7 @@ export default function Dojo({ session }) {
                                     setAiFeedback(null);
                                     setUserSentence('');
                                 }}
-                                className="w-full py-4 px-8 bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xl rounded-2xl shadow-lg transition-all active:scale-95 text-center"
+                                className="w-full py-4 px-8 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white font-extrabold text-xl rounded-2xl shadow-lg transition-all active:scale-95 text-center"
                             >
                                 Try Again
                             </button>

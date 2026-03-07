@@ -75,7 +75,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex flex-col items-center relative overflow-hidden transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center relative overflow-hidden transition-colors duration-300">
       <FloatingWords />
 
       {!session ? (
@@ -86,7 +86,7 @@ function App() {
         <div className="w-full flex flex-col items-center relative z-10">
 
           {/* ── Navbar ── */}
-          <header className="w-full sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-100 dark:border-slate-700/60 shadow-sm transition-colors duration-300">
+          <header className="w-full sticky top-0 z-50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-md dark:shadow-black/20 transition-colors duration-300">
             <div className="max-w-6xl mx-auto flex justify-between items-center px-4 md:px-8 py-3 md:py-4">
 
               {/* Left: logo + desktop nav */}
@@ -99,14 +99,15 @@ function App() {
                   </h1>
                 </div>
                 {/* Desktop nav */}
-                <nav className="hidden md:flex items-center space-x-1">
+                <nav className="hidden md:flex items-center space-x-1 py-1">
                   {navItems.map(({ key, label }) => (
                     <button
                       key={key}
                       onClick={() => handleNavClick(key)}
-                      className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 ${currentView === key
-                        ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                      style={{ transitionTimingFunction: 'cubic-bezier(0.25,0.8,0.25,1)' }}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 transform origin-center hover:scale-110 hover:mx-2 active:scale-95 ${currentView === key
+                        ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20 scale-105 mx-1'
+                        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
                         }`}
                     >
                       {label}
@@ -175,14 +176,15 @@ function App() {
 
             {/* Mobile Dropdown Menu */}
             {mobileMenuOpen && (
-              <div className="md:hidden absolute top-full left-0 right-0 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 p-4 shadow-xl flex flex-col gap-2 z-50 transition-all">
+              <div className="md:hidden absolute top-full left-0 right-0 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 p-4 shadow-2xl flex flex-col gap-1 z-50">
                 {navItems.map(({ key, label }) => (
                   <button
                     key={key}
                     onClick={() => handleNavClick(key)}
-                    className={`w-full text-left px-4 py-4 rounded-xl text-lg font-bold transition-all ${currentView === key
-                      ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    style={{ transitionTimingFunction: 'cubic-bezier(0.25,0.8,0.25,1)' }}
+                    className={`w-full text-left px-4 py-4 rounded-xl text-lg font-bold transition-all duration-300 transform origin-center hover:scale-[1.02] active:scale-95 ${currentView === key
+                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                      : 'text-slate-300 hover:bg-slate-800/80 hover:text-slate-100'
                       }`}
                   >
                     {label}
@@ -225,24 +227,24 @@ function App() {
             {currentView === 'game' && (
               <>
                 {/* Hero Section */}
-                <div className="relative w-full bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-800 rounded-2xl md:rounded-3xl p-5 md:p-8 mb-5 md:mb-8 border border-indigo-100 dark:border-slate-700 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6 z-10">
+                <div className="relative w-full bg-gradient-to-br from-slate-900 via-blue-950/60 to-slate-900 rounded-2xl md:rounded-3xl p-5 md:p-8 mb-5 md:mb-8 border border-blue-900/30 shadow-xl shadow-blue-950/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6 z-10">
                   <div className="flex-1 min-w-0">
-                    <p className="text-blue-500 dark:text-blue-400 font-bold text-xs md:text-sm uppercase tracking-widest mb-1">Welcome back 👋</p>
-                    <h2 className="text-2xl md:text-4xl font-black text-slate-800 dark:text-white tracking-tight leading-tight mb-1 md:mb-2">
+                    <p className="text-blue-400 font-bold text-xs md:text-sm uppercase tracking-widest mb-1">Welcome back 👋</p>
+                    <h2 className="text-2xl md:text-4xl font-black text-white tracking-tight leading-tight mb-1 md:mb-2">
                       Ready to expand your vocabulary?
                     </h2>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium text-sm md:text-lg max-w-lg">
+                    <p className="text-slate-400 font-medium text-sm md:text-lg max-w-lg">
                       Select a subject, read an article, and collect words to train in the Dojo.
                     </p>
                   </div>
-                  <div className="flex-shrink-0 flex flex-row md:flex-col items-center gap-2 md:gap-0 bg-white/80 dark:bg-slate-700/60 backdrop-blur-sm border border-white dark:border-slate-600 rounded-xl md:rounded-2xl px-5 md:px-8 py-3 md:py-5 shadow-sm">
-                    <span className="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-blue-500 to-indigo-600">{dailyStreak}</span>
-                    <span className="text-slate-500 dark:text-slate-400 font-bold text-xs md:text-sm uppercase tracking-wider md:mt-1">Day Streak</span>
+                  <div className="flex-shrink-0 flex flex-row md:flex-col items-center gap-2 md:gap-0 bg-blue-500/10 border border-blue-500/20 rounded-xl md:rounded-2xl px-5 md:px-8 py-3 md:py-5 shadow-sm">
+                    <span className="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-blue-400 to-indigo-500">{dailyStreak}</span>
+                    <span className="text-slate-400 font-bold text-xs md:text-sm uppercase tracking-wider md:mt-1">Day Streak</span>
                   </div>
                 </div>
 
                 {/* Reading Session Card */}
-                <div className="relative w-full bg-white dark:bg-slate-800 rounded-2xl md:rounded-3xl shadow-lg border border-slate-200/80 dark:border-slate-700 overflow-hidden z-10 transition-colors duration-300">
+                <div className="relative w-full bg-slate-900 rounded-2xl md:rounded-3xl shadow-2xl shadow-black/40 border border-slate-800/80 overflow-hidden z-10">
                   <Reader session={session} />
                 </div>
               </>

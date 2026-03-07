@@ -293,7 +293,7 @@ export default function Reader({ session }) {
       <div className="p-8 font-sans">
         <div className="w-full">
           <div className="mb-8">
-            <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-1">Choose a Subject</h2>
+            <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight mb-1">Choose a Subject</h2>
             <p className="text-slate-500 dark:text-slate-400 font-medium">Pick a topic you're curious about to find reading materials.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -303,19 +303,19 @@ export default function Reader({ session }) {
                 <button
                   key={subject.name}
                   onClick={() => setSelectedSubject(subject.name)}
-                  className={`group flex flex-col items-start justify-between min-h-48 h-full p-7 rounded-2xl border-2 transition-all duration-300 ease-in-out cursor-pointer bg-white dark:bg-slate-800 hover:-translate-y-1.5 hover:shadow-xl hover:border-opacity-80 shadow-sm ${getCategoryColor(index)}`}
+                  className="group flex flex-col items-start justify-between min-h-48 h-full p-7 rounded-2xl border transition-all duration-200 ease-in-out cursor-pointer bg-slate-800/60 border-slate-700/50 hover:-translate-y-1.5 hover:shadow-xl hover:shadow-black/30 hover:border-slate-500/80 active:scale-95 shadow-sm"
                 >
                   <div className="w-full text-left flex flex-col h-full">
                     <span className="text-4xl mb-4 block drop-shadow-sm transition-transform duration-300 group-hover:scale-110">{subject.icon}</span>
                     <div className="flex-grow">
-                      <span className="font-black text-lg leading-tight block mb-1 dark:text-white">{subject.name}</span>
-                      <span className="text-sm font-semibold opacity-70 dark:text-slate-300">
+                      <span className="font-black text-lg leading-tight block mb-1 text-slate-100">{subject.name}</span>
+                      <span className="text-sm font-semibold text-slate-400">
                         {articleCount} Article{articleCount !== 1 ? 's' : ''}
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-3 w-full">
                       {[...(subject.subSubjects || [])].sort((a, b) => a.localeCompare(b)).map(sub => (
-                        <span key={sub} className="text-xs px-2 py-1 rounded-full font-medium border transition-colors bg-white/50 border-slate-200 text-slate-600 dark:bg-black/20 dark:border-slate-700 dark:text-slate-300 group-hover:border-current group-hover:bg-transparent">
+                        <span key={sub} className="text-xs px-2 py-1 rounded-full font-medium border bg-slate-900/60 border-slate-600/60 text-slate-400 group-hover:border-slate-500 group-hover:text-slate-300 transition-colors">
                           {sub}
                         </span>
                       ))}
@@ -354,7 +354,7 @@ export default function Reader({ session }) {
         </button>
 
         <div className="mb-4">
-          <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{selectedSubject}</h2>
+          <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">{selectedSubject}</h2>
           <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">{currentSubjectArticles.length} article{currentSubjectArticles.length !== 1 ? 's' : ''} available</p>
         </div>
 
@@ -363,9 +363,9 @@ export default function Reader({ session }) {
           <div className="flex flex-wrap gap-2 mb-6">
             <button
               onClick={() => setSelectedFilter('All')}
-              className={`px-4 py-1.5 rounded-full text-sm font-bold border transition-all ${selectedFilter === 'All'
-                ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/30'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+              className={`px-4 py-1.5 rounded-full text-sm font-bold border transition-all duration-200 active:scale-95 ${selectedFilter === 'All'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/30'
+                : 'bg-slate-800/80 text-slate-400 border-slate-700/60 hover:bg-slate-700 hover:text-slate-200'
                 }`}
             >
               All
@@ -374,9 +374,9 @@ export default function Reader({ session }) {
               <button
                 key={tag}
                 onClick={() => setSelectedFilter(tag)}
-                className={`px-4 py-1.5 rounded-full text-sm font-bold border transition-all ${selectedFilter === tag
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/30'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                className={`px-4 py-1.5 rounded-full text-sm font-bold border transition-all duration-200 active:scale-95 ${selectedFilter === tag
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/30'
+                  : 'bg-slate-800/80 text-slate-400 border-slate-700/60 hover:bg-slate-700 hover:text-slate-200'
                   }`}
               >
                 {tag}
@@ -390,11 +390,11 @@ export default function Reader({ session }) {
             <button
               key={art.id}
               onClick={() => setSelectedArticleId(art.id)}
-              className="group flex flex-col md:flex-row md:items-center justify-between bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border-2 border-slate-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-lg transition-all duration-300 ease-in-out text-left hover:-translate-y-0.5"
+              className="group flex flex-col md:flex-row md:items-center justify-between bg-slate-800/60 p-5 rounded-2xl border border-slate-700/50 hover:border-slate-500/80 hover:shadow-xl hover:shadow-black/20 transition-all duration-200 ease-in-out text-left hover:-translate-y-0.5 active:scale-[0.99]"
             >
               <div>
-                <h3 className="text-lg font-black text-slate-800 dark:text-white mb-1 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">{art.title}</h3>
-                <p className="text-sm text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wide">Reading Module</p>
+                <h3 className="text-lg font-black text-slate-100 mb-1 group-hover:text-blue-400 transition-colors">{art.title}</h3>
+                <p className="text-sm text-slate-500 font-semibold uppercase tracking-wide">Reading Module</p>
               </div>
 
               <div className="mt-4 md:mt-0 flex items-center space-x-3">

@@ -227,13 +227,13 @@ export default function Dictionary({ session, dailyStreak = 0 }) {
                             <div className="flex justify-between items-center mb-2">
                                 <h2 className="font-bold text-base md:text-lg flex items-center">
                                     <span className="mr-2">🎓</span>
-                                    <span className={currentRank.textColor}>{currentRank.title}</span>
+                                    <span className="text-white/90 font-semibold">{currentRank.title}</span>
                                 </h2>
-                                <span className="text-indigo-200 font-bold text-xs md:text-sm">
+                                <span className="text-white/80 font-semibold text-xs md:text-sm">
                                     {currentRank.current} / {currentRank.next === "MAX" ? '∞' : currentRank.next} Words
                                 </span>
                             </div>
-                            <div className="w-full bg-white/20 rounded-full h-3 overflow-hidden">
+                            <div className="w-full bg-white/25 rounded-full h-3 overflow-hidden">
                                 <div
                                     className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(255,255,255,0.5)] ${currentRank.barColor}`}
                                     style={{ width: `${rankProgressPercentage}%` }}
