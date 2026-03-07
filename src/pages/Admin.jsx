@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabaseClient';
 
 export default function Admin() {
     const [title, setTitle] = useState('');
-    const [category, setCategory] = useState('Life Sciences & Biology');
+    const [category, setCategory] = useState('Science');
+    const [subSubject, setSubSubject] = useState('');
     const [difficulty, setDifficulty] = useState('Advanced');
     const [content, setContent] = useState('');
     const [bulkVocabContent, setBulkVocabContent] = useState('');
@@ -206,14 +207,15 @@ export default function Admin() {
 
             const { error } = await supabase
                 .from('articles')
-                .insert([{ title, category, difficulty_level: difficulty, content_data: formattedContent, dna_map: parsedMap }]);
+                .insert([{ title, category, sub_subject: subSubject.trim() || null, difficulty_level: difficulty, content_data: formattedContent, dna_map: parsedMap }]);
 
             if (error) {
                 setStatusMessage(error.message);
             } else {
                 setStatusMessage("✅ Article uploaded successfully!");
                 setTitle('');
-                setCategory('Life Sciences & Biology');
+                setCategory('Science');
+                setSubSubject('');
                 setDifficulty('Advanced');
                 setContent('');
                 setQuizContent('');
@@ -260,13 +262,25 @@ export default function Admin() {
                         className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm appearance-none"
                         disabled={isSubmitting}
                     >
-                        <option value="Life Sciences & Biology">Life Sciences & Biology</option>
-                        <option value="Technology & Innovation">Technology & Innovation</option>
-                        <option value="Global Geography & Environment">Global Geography & Environment</option>
-                        <option value="History & Archaeology">History & Archaeology</option>
-                        <option value="Psychology & Sociology">Psychology & Sociology</option>
-                        <option value="Arts & Culture">Arts & Culture</option>
+                        <option value="Science">Science</option>
+                        <option value="Technology">Technology</option>
+                        <option value="Psychology">Psychology</option>
+                        <option value="Environment">Environment</option>
+                        <option value="Society">Society</option>
                     </select>
+                </div>
+
+                <div>
+                    <label htmlFor="subSubject" className="block text-sm font-bold text-gray-700 mb-2">Sub-Subject <span className="font-normal text-gray-400">(optional tag, e.g. Biology, AI, Climate)</span></label>
+                    <input
+                        id="subSubject"
+                        type="text"
+                        value={subSubject}
+                        onChange={(e) => setSubSubject(e.target.value)}
+                        className="w-full p-4 border border-gray-300 rounded-xl bg-gray-50 text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm"
+                        placeholder="e.g. Biology, AI, Climate, Culture..."
+                        disabled={isSubmitting}
+                    />
                 </div>
 
                 <div>

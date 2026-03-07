@@ -103,7 +103,7 @@ export default function Quiz({ collectedWords, session, onComplete }) {
                         context_sentence: item.context,
                         definition: definitions[item.word] || 'Definition not found',
                         mastery_level: 1,
-                        last_practiced: new Date().toISOString()
+                        last_practiced: null
                     }));
 
                     const { error: upsertError } = await supabase

@@ -14,14 +14,16 @@ const CATEGORY_COLORS = [
   'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100 hover:border-purple-300'
 ];
 
-const CATEGORY_ICONS = ['📚', '🌍', '🔬', '🏛️', '💡', '🧠', '🌿', '🚀'];
+const IELTS_SUBJECTS = [
+  { name: 'Science', icon: '🔬', subSubjects: ['Biology', 'Physics', 'Health'] },
+  { name: 'Technology', icon: '💻', subSubjects: ['AI', 'Innovation', 'Engineering'] },
+  { name: 'Psychology', icon: '🧠', subSubjects: ['Behavior', 'Cognition', 'Mind'] },
+  { name: 'Environment', icon: '🌍', subSubjects: ['Climate', 'Ecology', 'Nature'] },
+  { name: 'Society', icon: '🏛️', subSubjects: ['Culture', 'History', 'Politics'] }
+];
 
 function getCategoryColor(index) {
   return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
-}
-
-function getCategoryIcon(index) {
-  return CATEGORY_ICONS[index % CATEGORY_ICONS.length];
 }
 
 export default function Reader({ session }) {
@@ -31,6 +33,7 @@ export default function Reader({ session }) {
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedArticleId, setSelectedArticleId] = useState(null);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(true);
+  const [selectedFilter, setSelectedFilter] = useState('All');
 
   // --- Reading State ---
   const [article, setArticle] = useState(null);
@@ -50,7 +53,7 @@ export default function Reader({ session }) {
         setIsLoadingMetadata(true);
         const { data, error } = await supabase
           .from('articles')
-          .select('id, title, category, difficulty_level');
+          .select('id, title, category, sub_subject, difficulty_level');
 
         if (error) throw error;
         setAllArticles(data || []);
@@ -64,14 +67,7 @@ export default function Reader({ session }) {
     fetchMetadata();
   }, []);
 
-  // Compute unique subjects
-  const uniqueSubjects = useMemo(() => {
-    // Filter out null/empty categories and get unique values
-    const categories = allArticles
-      .map(a => a.category)
-      .filter(c => c && c.trim() !== '');
-    return [...new Set(categories)].sort();
-  }, [allArticles]);
+
 
   // Derived filtered list based on subject
   const currentSubjectArticles = useMemo(() => {
@@ -281,7 +277,7 @@ export default function Reader({ session }) {
 
   // --- View 1: Subject Selection (No subject selected yet) ---
   if (!selectedSubject) {
-    if (uniqueSubjects.length === 0) {
+    if (allArticles.length === 0) {
       return (
         <div className="p-6 min-h-[70vh] flex flex-col justify-center">
           <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-8 rounded-2xl text-center shadow-sm">
@@ -301,21 +297,33 @@ export default function Reader({ session }) {
             <p className="text-slate-500 dark:text-slate-400 font-medium">Pick a topic you're curious about to find reading materials.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {uniqueSubjects.map((subject, index) => (
-              <button
-                key={subject}
-                onClick={() => setSelectedSubject(subject)}
-                className={`group flex flex-col items-start justify-between p-7 rounded-2xl border-2 transition-all duration-300 ease-in-out cursor-pointer bg-white dark:bg-slate-800 hover:-translate-y-1.5 hover:shadow-xl hover:border-opacity-80 shadow-sm ${getCategoryColor(index)}`}
-              >
-                <span className="text-4xl mb-4 block drop-shadow-sm transition-transform duration-300 group-hover:scale-110">{getCategoryIcon(index)}</span>
-                <div className="text-left w-full">
-                  <span className="font-black text-lg leading-tight block mb-1 dark:text-white">{subject}</span>
-                  <span className="text-sm font-semibold opacity-70 dark:text-slate-300">
-                    {allArticles.filter(a => a.category === subject).length} Articles
-                  </span>
-                </div>
-              </button>
-            ))}
+            {IELTS_SUBJECTS.map((subject, index) => {
+              const articleCount = allArticles.filter(a => a.category === subject.name).length;
+              return (
+                <button
+                  key={subject.name}
+                  onClick={() => setSelectedSubject(subject.name)}
+                  className={`group flex flex-col items-start justify-between min-h-48 h-full p-7 rounded-2xl border-2 transition-all duration-300 ease-in-out cursor-pointer bg-white dark:bg-slate-800 hover:-translate-y-1.5 hover:shadow-xl hover:border-opacity-80 shadow-sm ${getCategoryColor(index)}`}
+                >
+                  <div className="w-full text-left flex flex-col h-full">
+                    <span className="text-4xl mb-4 block drop-shadow-sm transition-transform duration-300 group-hover:scale-110">{subject.icon}</span>
+                    <div className="flex-grow">
+                      <span className="font-black text-lg leading-tight block mb-1 dark:text-white">{subject.name}</span>
+                      <span className="text-sm font-semibold opacity-70 dark:text-slate-300">
+                        {articleCount} Article{articleCount !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-3 w-full">
+                      {[...(subject.subSubjects || [])].sort((a, b) => a.localeCompare(b)).map(sub => (
+                        <span key={sub} className="text-xs px-2 py-1 rounded-full font-medium border transition-colors bg-white/50 border-slate-200 text-slate-600 dark:bg-black/20 dark:border-slate-700 dark:text-slate-300 group-hover:border-current group-hover:bg-transparent">
+                          {sub}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -323,23 +331,62 @@ export default function Reader({ session }) {
   }
 
   if (selectedSubject && !selectedArticleId) {
+    // Derive available filter tags from real sub_subject values in fetched articles
+    const availableFilters = [...new Set(
+      currentSubjectArticles
+        .map(a => a.sub_subject)
+        .filter(s => s && s.trim() !== '')
+    )].sort((a, b) => a.localeCompare(b));
+
+    // Filter articles by sub_subject
+    const filteredArticles = selectedFilter === 'All'
+      ? currentSubjectArticles
+      : currentSubjectArticles.filter(art => art.sub_subject === selectedFilter);
+
     return (
       <div className="p-8 font-sans">
         <button
-          onClick={goBackToSubjects}
+          onClick={() => { goBackToSubjects(); setSelectedFilter('All'); }}
           className="mb-6 flex items-center text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-bold transition-colors bg-slate-100 dark:bg-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-blue-300 dark:hover:border-blue-800 text-sm group"
         >
           <svg className="w-4 h-4 mr-2 group-hover:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
           Back to Subjects
         </button>
 
-        <div className="mb-6">
+        <div className="mb-4">
           <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{selectedSubject}</h2>
           <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">{currentSubjectArticles.length} article{currentSubjectArticles.length !== 1 ? 's' : ''} available</p>
         </div>
 
+        {/* Filter Bar */}
+        {availableFilters.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            <button
+              onClick={() => setSelectedFilter('All')}
+              className={`px-4 py-1.5 rounded-full text-sm font-bold border transition-all ${selectedFilter === 'All'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/30'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+            >
+              All
+            </button>
+            {availableFilters.map(tag => (
+              <button
+                key={tag}
+                onClick={() => setSelectedFilter(tag)}
+                className={`px-4 py-1.5 rounded-full text-sm font-bold border transition-all ${selectedFilter === tag
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/30'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex flex-col gap-4">
-          {currentSubjectArticles.map(art => (
+          {filteredArticles.map(art => (
             <button
               key={art.id}
               onClick={() => setSelectedArticleId(art.id)}
@@ -362,8 +409,19 @@ export default function Reader({ session }) {
               </div>
             </button>
           ))}
-          {currentSubjectArticles.length === 0 && (
-            <p className="text-slate-500 dark:text-slate-400 text-center py-8">No articles found in this category.</p>
+          {filteredArticles.length === 0 && (
+            <div className="py-16 text-center">
+              <div className="text-4xl mb-4">🔍</div>
+              <p className="text-slate-600 dark:text-slate-400 font-bold text-lg">
+                No articles found for <span className="text-blue-500">{selectedFilter}</span> yet.
+              </p>
+              <button
+                onClick={() => setSelectedFilter('All')}
+                className="mt-4 px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold text-sm transition-all"
+              >
+                Show All Articles
+              </button>
+            </div>
           )}
         </div>
       </div>

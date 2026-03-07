@@ -73,7 +73,7 @@ export default function Dojo({ session }) {
     // AI Variables (Level 1)
     const [phase1Sentence, setPhase1Sentence] = useState("");
     const [isGeneratingPhase1, setIsGeneratingPhase1] = useState(false);
-    const [timer, setTimer] = useState(15);
+    const [timer, setTimer] = useState(20);
 
     // AI Variables (Level 2)
     const [gptQuestion, setGptQuestion] = useState(null);
@@ -88,6 +88,9 @@ export default function Dojo({ session }) {
     const [loading, setLoading] = useState(true);
     const [feedback, setFeedback] = useState("");
     const [error, setError] = useState(null);
+
+    // Diagnostics State
+    const [diagnosticStats, setDiagnosticStats] = useState(null);
 
     // DB Cleanup: Remove broken definition words
     useEffect(() => {
@@ -105,6 +108,42 @@ export default function Dojo({ session }) {
         }
         cleanupDB();
     }, [session]);
+
+    // Diagnostic Fetch for Empty State
+    useEffect(() => {
+        async function fetchDiagnostics() {
+            if (!session?.user?.id) return;
+            if (!loading && practiceBatch.length === 0 && !isFinished) {
+                try {
+                    const { data, error } = await supabase
+                        .from('user_vocabulary')
+                        .select('mastery_level, last_practiced')
+                        .eq('user_id', session.user.id);
+
+                    if (data && !error) {
+                        const totalWords = data.length;
+                        const masteredWords = data.filter(w => w.mastery_level >= 4).length;
+
+                        const cooldownTime = new Date(Date.now() - 12 * 60 * 60 * 1000);
+                        const cooldownWords = data.filter(w => {
+                            if (w.mastery_level >= 4) return false;
+                            if (!w.last_practiced) return false;
+                            return new Date(w.last_practiced) > cooldownTime;
+                        }).length;
+
+                        setDiagnosticStats({
+                            totalWords,
+                            masteredWords,
+                            cooldownWords
+                        });
+                    }
+                } catch (err) {
+                    console.error("Diagnostic fetch error:", err);
+                }
+            }
+        }
+        fetchDiagnostics();
+    }, [practiceBatch.length, isFinished, session, loading]);
 
     // Auto-Save Session Progress
     useEffect(() => {
@@ -162,26 +201,11 @@ export default function Dojo({ session }) {
     useEffect(() => {
         if (practiceBatch.length === 0 || isFinished || currentIndex >= practiceBatch.length) return;
 
-        const currentWord = practiceBatch[currentIndex].word;
+        // Build option pool using ONLY the currently active session words
+        const sessionWords = practiceBatch.map(w => w.word);
 
-        // Build option pool
-        const otherTrainingWords = practiceBatch.map(w => w.word).filter(w => w !== currentWord);
-        const pool = [...otherTrainingWords, ...FALLBACK_WORDS].filter(w => w !== currentWord);
-
-        // Shuffle and take 3
-        const shuffledPool = pool.sort(() => 0.5 - Math.random());
-        const incorrectOptions = Array.from(new Set(shuffledPool)).slice(0, 3);
-
-        // Ensure we always have 3 wrong options
-        while (incorrectOptions.length < 3) {
-            const randomFallback = FALLBACK_WORDS[Math.floor(Math.random() * FALLBACK_WORDS.length)];
-            if (!incorrectOptions.includes(randomFallback) && randomFallback !== currentWord) {
-                incorrectOptions.push(randomFallback);
-            }
-        }
-
-        // Add correct word and shuffle final options
-        const finalOptions = [...incorrectOptions, currentWord].sort(() => 0.5 - Math.random());
+        // Shuffle the options to ensure the correct answer moves around
+        const finalOptions = [...sessionWords].sort(() => 0.5 - Math.random());
         setOptions(finalOptions);
     }, [currentIndex, practiceBatch, isFinished]);
 
@@ -218,7 +242,7 @@ export default function Dojo({ session }) {
 
             let text = await callDojoAI(prompt);
             setPhase1Sentence(text.trim());
-            setTimer(15);
+            setTimer(20);
         } catch (err) {
             console.error("Phase 1 AI Generation Error:", err);
             setAiError("Failed to generate combat scenario. Please try again.");
@@ -234,27 +258,48 @@ export default function Dojo({ session }) {
 
         const currentItem = practiceBatch[currentIndex];
 
-        if (currentPhase === 1 && !phase1Sentence && !isGeneratingPhase1) {
+        if (currentPhase === 2 && !phase1Sentence && !isGeneratingPhase1) {
             fetchPhase1Sentence(currentItem.word);
-        } else if (currentPhase === 2 && !gptQuestion && !isGenerating) {
-            fetchContextQuestion(currentItem.word);
         }
     }, [currentPhase, currentIndex, practiceBatch, isFinished]);
 
-    // Timer Logic for Phase 1
+    // Emergency Escape Hatch: If state breaks and pushes user to Phase 4 (no UI)
+    useEffect(() => {
+        if (currentPhase >= 4) {
+            console.warn("Dojo Soft-Lock Detected! Escaping Phase 4...");
+            setCurrentPhase(1);
+            if (currentIndex + 1 < practiceBatch.length) {
+                setCurrentIndex(prev => prev + 1);
+            } else {
+                setCurrentIndex(0);
+            }
+        }
+    }, [currentPhase, currentIndex, practiceBatch.length]);
+
+    // Reset timer when changing words securely
+    useEffect(() => {
+        if (currentPhase === 2) {
+            setTimer(20);
+        }
+    }, [currentIndex, currentPhase]);
+
+    // Timer Logic for Phase 2
     useEffect(() => {
         let interval = null;
-        if (currentPhase === 1 && !isGeneratingPhase1 && timer > 0 && !feedback) {
+        // Only tick down if we actually have a sentence generated and no feedback displaying
+        if (currentPhase === 2 && !isGeneratingPhase1 && phase1Sentence && timer > 0 && !feedback) {
             interval = setInterval(() => {
                 setTimer(prev => prev - 1);
             }, 1000);
-        } else if (timer === 0 && currentPhase === 1 && !feedback) {
+        } else if (timer === 0 && currentPhase === 2 && phase1Sentence && !feedback) {
             handleAnswer("TIMEOUT_FAIL");
         }
+
+        // Memory Leak Cleanup
         return () => {
             if (interval) clearInterval(interval);
         };
-    }, [currentPhase, isGeneratingPhase1, timer, feedback]);
+    }, [currentPhase, isGeneratingPhase1, phase1Sentence, timer, feedback]);
 
     const handleAnswer = async (selectedWordOrEvent) => {
         let answer = selectedWordOrEvent;
@@ -266,17 +311,19 @@ export default function Dojo({ session }) {
         const currentItem = practiceBatch[currentIndex];
 
         let isCorrect = false;
-        if (currentPhase === 1) {
+        if (currentPhase === 1) { // Definition Match
+            isCorrect = typeof answer === 'string' && answer.toLowerCase().trim() === currentItem.word.toLowerCase();
+        } else if (currentPhase === 2) { // Timed Combat
             isCorrect = typeof answer === 'string' && answer.toLowerCase().trim() === currentItem.word.toLowerCase() && answer !== "TIMEOUT_FAIL";
-        } else if (currentPhase === 2 && gptQuestion) {
-            isCorrect = typeof answer === 'string' && answer.toLowerCase().trim() === gptQuestion.answer.toLowerCase();
+        } else if (currentPhase === 3) { // Active Prod
+            isCorrect = typeof answer === 'string' && answer.toLowerCase().trim() === currentItem.word.toLowerCase();
         }
 
         let dbNewLevel = currentItem.mastery_level || 1;
 
         if (isCorrect) {
             setFeedback("Correct! 🔥");
-            dbNewLevel = Math.max(dbNewLevel, currentPhase + 1);
+            dbNewLevel = Math.max(dbNewLevel, currentPhase); // Scale to phase 1, 2, 3...
             if (currentPhase === 1) {
                 setSurvivingWords(prev => [...prev, currentItem]);
             }
@@ -290,7 +337,7 @@ export default function Dojo({ session }) {
         }
 
         // Update Database in background
-        if (session?.user?.id && currentItem?.word) {
+        if (session?.user?.id && currentItem?.word && currentPhase === 3) { // Only force save at end of pipeline or loss
             try {
                 const payload = {
                     mastery_level: dbNewLevel || 1,
@@ -325,13 +372,15 @@ export default function Dojo({ session }) {
                         if (latestSurvivors.length === 0) {
                             setCurrentPhase('defeat');
                         } else {
-                            // Sieve passed! Advance to phase 2 with only the survivors
                             setPracticeBatch([...latestSurvivors].sort(() => 0.5 - Math.random()));
                             setCurrentIndex(0);
                             setCurrentPhase(2);
                         }
                         return []; // Clear tracking array
                     });
+                } else if (currentPhase === 2) {
+                    setCurrentIndex(0);
+                    setCurrentPhase(3);
                 } else {
                     // --- VICTORY BLOCK: SRS UPDATE ---
                     setIsSaving(true);
@@ -381,9 +430,17 @@ export default function Dojo({ session }) {
 
         if (!userSentence.trim()) return;
 
+        if (!userSentence.toLowerCase().includes(currentItem.word.toLowerCase())) {
+            setAiFeedback({
+                status: "FAIL",
+                feedback: "You must include the target word in your sentence."
+            });
+            return;
+        }
+
         try {
             setIsGrading(true);
-            const prompt = `You are a helpful but strict IELTS tutor. The student must write an original sentence using the word '${currentItem.word}'. The word MUST be used with the exact same meaning it had in this original text: '${currentItem.context_sentence}'. Student's sentence: '${userSentence}'. Evaluate if the word is used correctly in that specific context and if the grammar is sound. Respond ONLY in strict JSON format like this: {"passed": true, "feedback": "Great job using it in a biological context!"} or {"passed": false, "feedback": "Grammar error, or you used the wrong definition of the word."}`;
+            const prompt = `You are an IELTS examiner. The user was asked to write a sentence using the word '${currentItem.word}'. User's sentence: '${userSentence}'. Evaluate it for grammatical correctness and proper contextual use of the target word. Return EXACTLY a JSON object with no markdown, no backticks, and no extra text. Format: { "status": "PASS" | "FAIL", "feedback": "1 sentence explaining why", "improved_sentence": "A slightly more native/advanced version of their sentence" }.`;
 
             let aiText = await callDojoAI(prompt);
 
@@ -401,16 +458,16 @@ export default function Dojo({ session }) {
                 try {
                     resultJson = JSON.parse(aiText);
                 } catch (parseErr) {
-                    console.error("Failed to parse AI JSON response:", aiText);
+                    console.error("Failed to parse AI JSON response:", aiText, parseErr);
                 }
             }
 
-            if (resultJson && typeof resultJson.passed === 'boolean') {
+            if (resultJson && resultJson.status) {
                 setAiFeedback(resultJson);
             } else {
                 // Fallback if parsing completely fails
                 setAiFeedback({
-                    passed: false,
+                    status: "FAIL",
                     feedback: "API formatting error. Please strictly check your grammar and try again."
                 });
             }
@@ -418,7 +475,7 @@ export default function Dojo({ session }) {
         } catch (err) {
             console.error("Sentence grading error:", err);
             setAiFeedback({
-                passed: false,
+                status: "FAIL",
                 feedback: err.message || "Failed to connect to grading server. Please try again."
             });
         } finally {
@@ -446,7 +503,7 @@ export default function Dojo({ session }) {
         );
     }
 
-    if (!isFinished && practiceBatch.length === 0) {
+    if (!isFinished && (!practiceBatch || practiceBatch.length === 0)) {
         return (
             <div className="max-w-4xl mx-auto p-6">
                 <div className="bg-white dark:bg-slate-800 p-12 rounded-3xl text-center shadow-lg border border-slate-100 dark:border-slate-700 transition-colors">
@@ -455,6 +512,16 @@ export default function Dojo({ session }) {
                     <p className="text-slate-500 dark:text-slate-400 font-medium text-lg max-w-lg mx-auto mb-8 leading-relaxed">
                         Incredible work. Your recently trained words are resting right now to build your long-term memory. Take a break, or read a new Article to discover more vocabulary.
                     </p>
+
+                    {diagnosticStats && (
+                        <div className="max-w-xs mx-auto mb-8 bg-slate-900 border border-slate-700 rounded-xl p-5 font-mono text-sm text-left text-green-400 shadow-inner">
+                            <p className="font-bold text-slate-300 mb-3 border-b border-slate-700 pb-2">{`> [SYSTEM DIAGNOSTICS]`}</p>
+                            <p className="mb-1">Total Vault Words: <span className="text-white float-right">{diagnosticStats.totalWords}</span></p>
+                            <p className="mb-1">Mastered (Hidden): <span className="text-white float-right">{diagnosticStats.masteredWords}</span></p>
+                            <p className="mb-1">On 12h Cooldown (Hidden): <span className="text-white float-right">{diagnosticStats.cooldownWords}</span></p>
+                            <p className="mt-3 text-orange-400 font-bold border-t border-slate-800 pt-3">Playable Now: <span className="float-right">0</span></p>
+                        </div>
+                    )}
                     <button
                         onClick={() => window.location.href = '/'}
                         className="bg-orange-500 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-orange-600 hover:-translate-y-1 transition-all shadow-lg hover:shadow-orange-500/40"
@@ -533,8 +600,6 @@ export default function Dojo({ session }) {
     }
 
     const currentItem = practiceBatch[currentIndex];
-    const level = currentItem.mastery_level || 1;
-    const maskedContext = currentItem.context_sentence ? maskText(currentItem.context_sentence, currentItem.word) : "Context not available.";
 
     return (
         <div className="max-w-4xl mx-auto p-6 font-sans">
@@ -625,13 +690,30 @@ export default function Dojo({ session }) {
 
                 {currentPhase === 1 && (
                     <>
-                        <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-4">Phase 1: Contextual Combat</span>
+                        <span className="text-xs font-black text-blue-500 uppercase tracking-[0.2em] block mb-4">Phase 1: Definition Match</span>
+
+                        <div className="flex flex-col items-center justify-center space-y-6 py-4">
+                            <p className="text-xl lg:text-2xl font-medium text-slate-800 dark:text-slate-200 leading-relaxed text-center max-w-lg">
+                                "{currentItem.definition}"
+                            </p>
+                            {currentItem.category && (
+                                <span className="px-3 py-1 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 rounded-full uppercase tracking-wider">
+                                    {currentItem.category}
+                                </span>
+                            )}
+                        </div>
+                    </>
+                )}
+
+                {currentPhase === 2 && (
+                    <>
+                        <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-4">Phase 2: Contextual Combat</span>
 
                         {/* Timer Bar */}
                         <div className="w-full bg-slate-200 dark:bg-slate-700 h-3 rounded-full mb-6 overflow-hidden relative">
                             <div
                                 className={`h-full transition-all duration-1000 ease-linear ${timer <= 5 ? 'bg-red-500' : 'bg-orange-500'}`}
-                                style={{ width: `${(timer / 15) * 100}%` }}
+                                style={{ width: `${(timer / 20) * 100}%` }}
                             ></div>
                         </div>
 
@@ -659,54 +741,46 @@ export default function Dojo({ session }) {
                                 </div>
                             </div>
                         ) : (
-                            <p className="text-2xl lg:text-3xl font-medium text-slate-800 dark:text-white leading-snug italic py-4">
-                                "{phase1Sentence}"
-                            </p>
+                            <div className="flex flex-col gap-6 py-4">
+                                <p className="text-2xl lg:text-3xl font-medium text-slate-800 dark:text-white leading-snug italic">
+                                    "{phase1Sentence}"
+                                </p>
+                                <form onSubmit={handleAnswer} className="flex flex-col sm:flex-row gap-4 w-full">
+                                    <input
+                                        type="text"
+                                        value={textAnswer}
+                                        onChange={(e) => setTextAnswer(e.target.value)}
+                                        placeholder="Type the missing word..."
+                                        disabled={!!feedback || timer <= 0}
+                                        autoFocus
+                                        className="flex-1 py-4 px-6 text-xl font-bold text-slate-800 dark:text-white bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-orange-500 focus:ring-4 focus:ring-orange-500/20 outline-none transition-all placeholder:font-normal placeholder:text-slate-400 disabled:opacity-50"
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={!!feedback || timer <= 0 || !textAnswer.trim()}
+                                        className="py-4 px-8 bg-orange-500 hover:bg-orange-600 text-white font-black uppercase tracking-wider rounded-2xl shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 transition-all active:scale-95 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        Submit
+                                    </button>
+                                </form>
+                            </div>
                         )}
                     </>
                 )}
 
-                {currentPhase === 2 && (
-                    <>
-                        <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-4">Phase 2: Context Mastery</span>
-                        {aiError ? (
-                            <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 p-6 rounded-2xl border border-red-200 dark:border-red-800 text-center mb-4">
-                                <h3 className="font-bold mb-2">AI Generation Failed</h3>
-                                <p className="mb-4 text-sm">{aiError}</p>
-                                <button
-                                    onClick={() => fetchContextQuestion(currentItem.word)}
-                                    className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-                                >
-                                    Try Again
-                                </button>
-                            </div>
-                        ) : isGenerating || !gptQuestion ? (
-                            <div className="flex items-center space-x-3 text-orange-500 animate-pulse my-4">
-                                <div className="w-6 h-6 border-t-2 border-b-2 border-orange-500 rounded-full animate-spin"></div>
-                                <span className="font-bold">AI is writing a new scenario...</span>
-                            </div>
-                        ) : (
-                            <p className="text-2xl lg:text-3xl font-medium text-slate-800 dark:text-white leading-snug italic">
-                                "{gptQuestion.sentence}"
-                            </p>
-                        )}
-                    </>
-                )}
-
-                {currentPhase >= 3 && !aiFeedback && (
-                    <>
-                        <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-4">Level 3: Active Recall</span>
-                        <p className="text-xl font-medium text-slate-800 dark:text-white leading-snug mb-6">
-                            Write an original, academic sentence using the word: <span className="font-black text-blue-600 dark:text-blue-400 capitalize">'{currentItem.word}'</span>
+                {currentPhase === 3 && !aiFeedback && (
+                    <div className="flex flex-col gap-4">
+                        <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-2">Phase 3: Active Production</span>
+                        <p className="text-xl font-medium text-slate-800 dark:text-white leading-snug mb-4">
+                            Write an IELTS-style sentence using the word: <span className="font-black text-blue-600 dark:text-blue-400 capitalize">'{currentItem.word}'</span>
                         </p>
-                        <p className="text-sm text-gray-500 dark:text-slate-400 italic mb-4">Original context: "{currentItem.context_sentence}"</p>
                         <form onSubmit={handleGradeSentence} className="flex flex-col gap-4">
                             <textarea
                                 value={userSentence}
                                 onChange={(e) => setUserSentence(e.target.value)}
                                 placeholder="Type your sentence here..."
                                 disabled={isGrading}
-                                rows={3}
+                                rows={4}
                                 className="w-full py-4 px-6 text-xl font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-2xl focus:border-orange-500 dark:focus:border-orange-500 focus:ring focus:ring-orange-200 dark:focus:ring-orange-900 outline-none transition-all shadow-sm disabled:opacity-50"
                             />
                             <button
@@ -717,27 +791,45 @@ export default function Dojo({ session }) {
                                 {isGrading ? "Grading..." : "Submit for Grading"}
                             </button>
                         </form>
-                    </>
+                    </div>
                 )}
 
-                {currentPhase >= 3 && aiFeedback && (
-                    <>
-                        <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-4">Level 3: Results</span>
-                        <div className={`p-6 rounded-2xl border-2 mb-6 ${aiFeedback.passed ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-200' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200'}`}>
+                {currentPhase === 3 && aiFeedback && (
+                    <div className="flex flex-col gap-4">
+                        <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em] block mb-2">Phase 3: Results</span>
+                        <div className={`p-6 rounded-2xl border-2 mb-2 ${aiFeedback.status === 'PASS' ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-200' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200'}`}>
                             <h3 className="text-2xl font-black mb-2 flex items-center gap-2">
-                                {aiFeedback.passed ? '✅ Passed!' : '❌ Incorrect Usage'}
+                                {aiFeedback.status === 'PASS' ? '✅ Passed!' : '❌ Needs Improvement'}
                             </h3>
-                            <p className="text-lg font-medium leading-relaxed">
+                            <p className="text-lg font-medium leading-relaxed mb-4">
                                 {aiFeedback.feedback}
                             </p>
+                            {aiFeedback.improved_sentence && (
+                                <div className="mt-4 p-4 bg-white/50 dark:bg-black/20 rounded-xl">
+                                    <span className="text-xs font-bold uppercase tracking-wider block mb-1 opacity-70">Improved Version</span>
+                                    <p className="italic font-medium text-slate-800 dark:text-slate-200">{aiFeedback.improved_sentence}</p>
+                                </div>
+                            )}
                         </div>
-                        <button
-                            onClick={() => handleAnswer(aiFeedback.passed ? currentItem.word : 'incorrect')}
-                            className="w-full py-4 px-8 bg-slate-800 text-white font-extrabold text-xl rounded-2xl shadow-lg hover:shadow-slate-500/40 transition-all active:scale-95 text-center"
-                        >
-                            Continue
-                        </button>
-                    </>
+                        {aiFeedback.status === 'PASS' ? (
+                            <button
+                                onClick={() => handleAnswer(currentItem.word)}
+                                className="w-full py-4 px-8 bg-green-600 hover:bg-green-500 text-white font-extrabold text-xl rounded-2xl shadow-lg hover:shadow-green-500/40 transition-all active:scale-95 text-center"
+                            >
+                                Next Word
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => {
+                                    setAiFeedback(null);
+                                    setUserSentence('');
+                                }}
+                                className="w-full py-4 px-8 bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xl rounded-2xl shadow-lg transition-all active:scale-95 text-center"
+                            >
+                                Try Again
+                            </button>
+                        )}
+                    </div>
                 )}
 
                 {feedback && (
@@ -749,9 +841,9 @@ export default function Dojo({ session }) {
                 )}
             </div>
 
-            {currentPhase === 1 || currentPhase === 2 ? (
+            {currentPhase === 1 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
-                    {(currentPhase === 2 && gptQuestion ? gptQuestion.options : options).map((opt, idx) => (
+                    {options.map((opt, idx) => (
                         <button
                             key={idx}
                             onClick={() => handleAnswer(opt)}
@@ -762,9 +854,9 @@ export default function Dojo({ session }) {
                         </button>
                     ))}
                 </div>
-            ) : null}
+            )}
 
-            {(currentPhase === 0 || currentPhase === 1 || currentPhase === 2) && (
+            {(currentPhase >= 0 && currentPhase <= 3) && (
                 <div className="mt-8 flex justify-center">
                     <button
                         onClick={handleAbandonRun}

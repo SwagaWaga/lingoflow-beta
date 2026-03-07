@@ -38,7 +38,7 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                 dna_type: item.dna_type,
                 audio_url: item.audio_url || null,
                 mastery_level: 1,
-                last_practiced: new Date().toISOString()
+                last_practiced: null
             }));
 
             const { error: upsertError } = await supabase
