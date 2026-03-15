@@ -613,9 +613,9 @@ export default function Dojo({ session }) {
                                             <div className="flex flex-col gap-3">
                                                 {currentItem.word_connections.synonyms?.length > 0 && (
                                                     <div className="flex items-center flex-wrap gap-2">
-                                                        <span className="text-xs uppercase tracking-widest font-bold text-slate-500 mr-1">Synonyms:</span>
+                                                        <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mr-1">Synonyms:</span>
                                                         {currentItem.word_connections.synonyms.map(syn => (
-                                                            <span key={syn} className="px-2.5 py-1 text-[11px] font-black uppercase tracking-wider bg-indigo-900/40 text-indigo-300 border border-indigo-700/50 rounded-md">
+                                                            <span key={syn} className="px-2.5 py-1 text-xs font-medium rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
                                                                 {syn}
                                                             </span>
                                                         ))}
@@ -623,9 +623,9 @@ export default function Dojo({ session }) {
                                                 )}
                                                 {currentItem.word_connections.collocations?.length > 0 && (
                                                     <div className="flex items-center flex-wrap gap-2">
-                                                        <span className="text-xs uppercase tracking-widest font-bold text-slate-500 mr-1">Collocations:</span>
+                                                        <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mr-1">Collocations:</span>
                                                         {currentItem.word_connections.collocations.map(col => (
-                                                            <span key={col} className="px-2.5 py-1 text-[11px] font-black uppercase tracking-wider bg-emerald-900/40 text-emerald-400 border border-emerald-700/50 rounded-md">
+                                                            <span key={col} className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
                                                                 {col}
                                                             </span>
                                                         ))}
@@ -677,7 +677,7 @@ export default function Dojo({ session }) {
                                         {currentItem.word_connections.synonyms?.length > 0 && (
                                             <div className="flex items-center justify-center flex-wrap gap-2">
                                                 {currentItem.word_connections.synonyms.map(syn => (
-                                                    <span key={syn} className="px-2.5 py-1 text-[11px] font-black uppercase tracking-wider bg-indigo-900/40 text-indigo-300 border border-indigo-700/50 rounded-md">
+                                                    <span key={syn} className="px-2.5 py-1 text-xs font-medium rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
                                                         {syn}
                                                     </span>
                                                 ))}
@@ -686,7 +686,7 @@ export default function Dojo({ session }) {
                                         {currentItem.word_connections.collocations?.length > 0 && (
                                             <div className="flex items-center justify-center flex-wrap gap-2">
                                                 {currentItem.word_connections.collocations.map(col => (
-                                                    <span key={col} className="px-2.5 py-1 text-[11px] font-black uppercase tracking-wider bg-emerald-900/40 text-emerald-400 border border-emerald-700/50 rounded-md">
+                                                    <span key={col} className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
                                                         {col}
                                                     </span>
                                                 ))}
@@ -734,16 +734,18 @@ export default function Dojo({ session }) {
                                         {wordObj.word_connections && (
                                             <div className="w-full mt-3 pt-3 border-t border-slate-700/50 flex flex-col gap-2">
                                                 {wordObj.word_connections.wordFamily && (
-                                                    <p className="text-xs text-slate-400">
-                                                        <span className="font-bold uppercase tracking-widest text-[10px] text-slate-500 mr-2">Word Family</span>
-                                                        <span className="italic">{wordObj.word_connections.wordFamily}</span>
-                                                    </p>
+                                                    <div className="flex flex-col mb-1">
+                                                        <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1">Word Family</span>
+                                                        <p className="border-l-2 border-indigo-500/50 pl-3 py-1 text-sm text-slate-400 italic">
+                                                            {wordObj.word_connections.wordFamily}
+                                                        </p>
+                                                    </div>
                                                 )}
                                                 {wordObj.word_connections.collocations?.length > 0 && (
                                                     <div className="flex flex-wrap gap-1.5 items-center">
-                                                        <span className="font-bold uppercase tracking-widest text-[10px] text-slate-500 mr-1">Collocations</span>
+                                                        <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mr-1">Collocations</span>
                                                         {wordObj.word_connections.collocations.map((col, i) => (
-                                                            <span key={i} className="px-2 py-0.5 rounded-md bg-amber-900/20 text-amber-500 border border-amber-500/30 text-[10px] font-bold">
+                                                            <span key={i} className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
                                                                 {col}
                                                             </span>
                                                         ))}
@@ -853,11 +855,11 @@ export default function Dojo({ session }) {
 
                         {/* Phase 3 Memory Hooks Reinforcement */}
                         {currentItem.word_connections?.collocations?.length > 0 && (
-                            <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-xl">
-                                <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-500 tracking-widest block mb-2">💡 Suggested Usage (Collocations)</span>
+                            <div className="mb-4">
+                                <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold block mb-2">💡 Suggested Usage (Collocations)</span>
                                 <div className="flex flex-wrap gap-2">
                                     {currentItem.word_connections.collocations.map((col, i) => (
-                                        <span key={i} className="px-2 py-1 rounded border border-amber-300 dark:border-amber-700/50 bg-white dark:bg-slate-800 text-amber-800 dark:text-amber-400 text-xs font-bold shadow-sm">
+                                        <span key={i} className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
                                             {col}
                                         </span>
                                     ))}

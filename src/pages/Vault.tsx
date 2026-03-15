@@ -3,14 +3,18 @@ import { supabase } from '../lib/supabaseClient';
 import AchievementsBoard from '../components/AchievementsBoard';
 import { useAccent } from '../context/AccentContext';
 import { playClickSound, playQuitSound } from '../utils/playSound';
+import VaultWordCard from '../components/VaultWordCard';
+import { VocabularyWord } from '../types/database';
+import { WordModal } from '../components/Vault/WordModal';
 
-export default function Dictionary({ session, dailyStreak = 0 }) {
+export default function Vault({ session, dailyStreak = 0 }: { session: any, dailyStreak?: number }) {
     const { preferredAccent } = useAccent();
-    const [vaultWords, setVaultWords] = useState([]);
+    const [vaultWords, setVaultWords] = useState<VocabularyWord[]>([]);
+    const [selectedWord, setSelectedWord] = useState<VocabularyWord | null>(null);
     const [loading, setLoading] = useState(true);
     const [powerScore, setPowerScore] = useState(0);
-    const [error, setError] = useState(null);
-    const [editingWord, setEditingWord] = useState(null);
+    const [error, setError] = useState<string | null>(null);
+    const [editingWord, setEditingWord] = useState<VocabularyWord | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const audioRef = useRef(null);
 
@@ -179,7 +183,7 @@ export default function Dictionary({ session, dailyStreak = 0 }) {
     // Handle "MAX" state
     const rankProgressPercentage = currentRank.next === "MAX"
         ? 100
-        : (currentRank.current / currentRank.next) * 100;
+        : (currentRank.current / (currentRank.next as number)) * 100;
 
     const dnaCategories = [
         { key: 'Academic', color: 'bg-blue-500', bg: 'bg-blue-100', icon: '🎓' },
@@ -335,120 +339,27 @@ export default function Dictionary({ session, dailyStreak = 0 }) {
                     {vaultWords.map((wordObj) => {
                         const stage = getEvolutionStage(wordObj.mastery_level);
                         return (
-                            <div key={wordObj.id || wordObj.word} className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-md border border-slate-100 dark:border-slate-700 hover:shadow-xl transition-all transform hover:-translate-y-1 relative overflow-hidden group flex flex-col h-full">
-                                <div className="flex flex-wrap justify-between items-start mb-4 gap-y-2 w-full">
-                                    <div className="flex flex-wrap items-center gap-3 min-w-0">
-                                        <h3 className="text-2xl font-bold text-slate-800 dark:text-white capitalize tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate max-w-full">
-                                            {wordObj.word}
-                                        </h3>
-                                        <div className="flex items-center space-x-2 shrink-0">
-                                            <button
-                                                onClick={() => { playClickSound(); setEditingWord(wordObj); }}
-                                                className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-indigo-500 dark:text-slate-300 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-all flex items-center justify-center shadow-sm shrink-0"
-                                                title="Edit Word"
-                                            >
-                                                ✏️
-                                            </button>
-                                            <button
-                                                onClick={() => handlePlayAudio(wordObj.word)}
-                                                className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-indigo-500 dark:text-slate-300 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-all flex items-center justify-center shadow-sm shrink-0"
-                                                title="Play Pronunciation"
-                                            >
-                                                🔊
-                                            </button>
-                                            <button
-                                                onClick={() => { playQuitSound(); handleDeleteWord(wordObj.id); }}
-                                                className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-red-500 dark:text-slate-300 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/40 transition-all flex items-center justify-center shadow-sm shrink-0"
-                                                title="Delete Word"
-                                            >
-                                                🗑️
-                                            </button>
-                                            <span className="ml-2 px-2 py-0.5 bg-slate-700 text-slate-300 text-[10px] font-bold uppercase tracking-widest rounded-full flex items-center justify-center shrink-0">
-                                                {preferredAccent}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border flex items-center space-x-1 shrink-0 ${stage.color}`}>
-                                        <span>{stage.emoji}</span>
-                                        <span>{stage.title}</span>
-                                    </span>
-                                </div>
-
-                                {wordObj.definition && (
-                                    <div className="mb-4">
-                                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Definition</span>
-                                        <p className="text-slate-600 dark:text-slate-300 font-medium leading-snug line-clamp-3">{wordObj.definition}</p>
-                                    </div>
-                                )}
-
-                                {/* Memory Hooks / Connections */}
-                                {wordObj.word_connections && (
-                                    <div className="mb-4 space-y-3">
-                                        {/* Synonyms */}
-                                        {wordObj.word_connections.synonyms?.length > 0 && (
-                                            <div>
-                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Synonyms</span>
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {wordObj.word_connections.synonyms.map((syn, idx) => (
-                                                        <span key={idx} className="px-2 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border border-cyan-100 dark:border-cyan-800/50 text-xs font-medium">
-                                                            {syn}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Antonyms */}
-                                        {wordObj.word_connections.antonyms?.length > 0 && (
-                                            <div>
-                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Antonyms</span>
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {wordObj.word_connections.antonyms.map((ant, idx) => (
-                                                        <span key={idx} className="px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 border border-rose-100 dark:border-rose-800/50 text-xs font-medium">
-                                                            {ant}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Collocations */}
-                                        {wordObj.word_connections.collocations?.length > 0 && (
-                                            <div>
-                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Collocations</span>
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {wordObj.word_connections.collocations.map((col, idx) => (
-                                                        <span key={idx} className="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-800/50 text-xs font-medium">
-                                                            {col}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Word Family */}
-                                        {wordObj.word_connections.wordFamily && (
-                                            <div>
-                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Word Family</span>
-                                                <p className="text-slate-600 dark:text-slate-400 text-xs italic bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                                                    {wordObj.word_connections.wordFamily}
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                <div className="mt-auto pt-4 border-t border-slate-100 dark:border-slate-700">
-                                    <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1 flex items-center">
-                                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                        Last Practiced
-                                    </span>
-                                    <span className="text-slate-500 dark:text-slate-400 text-sm">{new Date(wordObj.last_practiced).toLocaleDateString()}</span>
-                                </div>
-                            </div>
+                            <VaultWordCard
+                                key={wordObj.id || wordObj.word}
+                                wordObj={wordObj}
+                                stage={stage}
+                                preferredAccent={preferredAccent}
+                                onClickCard={() => { playClickSound(); setSelectedWord(wordObj); }}
+                                onEdit={(word) => { playClickSound(); setEditingWord(word); }}
+                                onPlayAudio={handlePlayAudio}
+                                onDelete={(id) => { playQuitSound(); handleDeleteWord(id); }}
+                            />
                         );
                     })}
                 </div>
+            )}
+
+            {/* Word Details Modal */}
+            {selectedWord && (
+                <WordModal 
+                    word={selectedWord} 
+                    onClose={() => { playQuitSound(); setSelectedWord(null); }} 
+                />
             )}
 
             {/* Edit Word Modal */}
@@ -473,7 +384,7 @@ export default function Dictionary({ session, dailyStreak = 0 }) {
                                 <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Definition</label>
                                 <textarea
                                     required
-                                    rows="4"
+                                    rows={4}
                                     value={editingWord.definition || ''}
                                     onChange={(e) => setEditingWord({ ...editingWord, definition: e.target.value })}
                                     className="w-full p-4 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 shadow-sm"

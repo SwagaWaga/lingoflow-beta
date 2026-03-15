@@ -121,10 +121,10 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                                     <div className="mt-4 space-y-2">
                                         {item.word_connections.synonyms?.length > 0 && (
                                             <div>
-                                                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-1">Synonyms</span>
+                                                <span className="text-[10px] uppercase tracking-widest text-slate-500 mb-2 font-bold block">Synonyms</span>
                                                 <div className="flex flex-wrap gap-1.5">
                                                     {item.word_connections.synonyms.map((syn, i) => (
-                                                        <span key={i} className="px-2 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border border-cyan-100 dark:border-cyan-800/50 text-xs font-medium">
+                                                        <span key={i} className="px-2.5 py-1 text-xs font-medium rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
                                                             {syn}
                                                         </span>
                                                     ))}
@@ -133,10 +133,10 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                                         )}
                                         {item.word_connections.antonyms?.length > 0 && (
                                             <div>
-                                                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-1">Antonyms</span>
+                                                <span className="text-[10px] uppercase tracking-widest text-slate-500 mb-2 font-bold block">Antonyms</span>
                                                 <div className="flex flex-wrap gap-1.5">
                                                     {item.word_connections.antonyms.map((ant, i) => (
-                                                        <span key={i} className="px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 border border-rose-100 dark:border-rose-800/50 text-xs font-medium">
+                                                        <span key={i} className="px-2.5 py-1 text-xs font-medium rounded-md bg-rose-500/10 text-rose-300 border border-rose-500/20">
                                                             {ant}
                                                         </span>
                                                     ))}
@@ -145,10 +145,10 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                                         )}
                                         {item.word_connections.collocations?.length > 0 && (
                                             <div>
-                                                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-1">Collocations</span>
+                                                <span className="text-[10px] uppercase tracking-widest text-slate-500 mb-2 font-bold block">Collocations</span>
                                                 <div className="flex flex-wrap gap-1.5">
                                                     {item.word_connections.collocations.map((col, i) => (
-                                                        <span key={i} className="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-800/50 text-xs font-medium">
+                                                        <span key={i} className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
                                                             {col}
                                                         </span>
                                                     ))}
@@ -157,8 +157,8 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                                         )}
                                         {item.word_connections.wordFamily && (
                                             <div>
-                                                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-1">Word Family</span>
-                                                <p className="text-gray-600 dark:text-gray-400 text-xs italic bg-gray-50 dark:bg-slate-900/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800">
+                                                <span className="text-[10px] uppercase tracking-widest text-slate-500 mb-2 font-bold block">Word Family</span>
+                                                <p className="border-l-2 border-indigo-500/50 pl-3 py-1 mt-1 text-sm text-slate-400 italic">
                                                     {item.word_connections.wordFamily}
                                                 </p>
                                             </div>

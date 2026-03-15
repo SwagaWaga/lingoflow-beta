@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Reader from './components/game/reader';
 import Auth from './components/Auth';
 import Admin from './pages/Admin';
-import Dictionary from './pages/Dictionary';
+import Vault from './pages/Vault';
 import Dojo from './pages/Dojo';
 import FloatingWords from './components/FloatingWords';
 import AxiomLogo from './components/AxiomLogo';
@@ -292,7 +292,7 @@ function App() {
               )}
 
               {currentView === 'admin' && <Admin />}
-              {currentView === 'dictionary' && <Dictionary session={session} dailyStreak={dailyStreak} />}
+              {currentView === 'dictionary' && <Vault session={session} dailyStreak={dailyStreak} />}
               {currentView === 'dojo' && <Dojo session={session} />}
 
             </main>
