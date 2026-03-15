@@ -3,9 +3,8 @@ import { supabase } from '../lib/supabaseClient';
 import AchievementsBoard from '../components/AchievementsBoard';
 import { useAccent } from '../context/AccentContext';
 import { playClickSound, playQuitSound } from '../utils/playSound';
-import VaultWordCard from '../components/VaultWordCard';
 import { VocabularyWord } from '../types/database';
-import { WordModal } from '../components/Vault/WordModal';
+import { Flashcard } from '../components/Flashcard';
 
 export default function Vault({ session, dailyStreak = 0 }: { session: any, dailyStreak?: number }) {
     const { preferredAccent } = useAccent();
@@ -335,31 +334,48 @@ export default function Vault({ session, dailyStreak = 0 }: { session: any, dail
                     <p className="text-slate-500 dark:text-slate-400 text-lg max-w-md mx-auto">Play a reading mission and collect words to see them grow here in your dictionary.</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 p-6">
                     {vaultWords.map((wordObj) => {
-                        const stage = getEvolutionStage(wordObj.mastery_level);
                         return (
-                            <VaultWordCard
+                            <div 
                                 key={wordObj.id || wordObj.word}
-                                wordObj={wordObj}
-                                stage={stage}
-                                preferredAccent={preferredAccent}
-                                onClickCard={() => { playClickSound(); setSelectedWord(wordObj); }}
-                                onEdit={(word) => { playClickSound(); setEditingWord(word); }}
-                                onPlayAudio={handlePlayAudio}
-                                onDelete={(id) => { playQuitSound(); handleDeleteWord(id); }}
-                            />
+                                onClick={() => { playClickSound(); setSelectedWord(wordObj); }} 
+                                className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800/80 transition-all hover:-translate-y-1 group"
+                            >
+                                <h3 className="text-2xl font-bold text-indigo-400 group-hover:text-indigo-300 transition-colors truncate max-w-full px-2">{wordObj.word}</h3>
+                                <span className="text-xs text-slate-500 mt-2 uppercase tracking-widest">Tap to Review</span>
+                            </div>
                         );
                     })}
                 </div>
             )}
 
-            {/* Word Details Modal */}
+            {/* Flip-to-Center Modal */}
             {selectedWord && (
-                <WordModal 
-                    word={selectedWord} 
-                    onClose={() => { playQuitSound(); setSelectedWord(null); }} 
-                />
+                <div 
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
+                    onClick={() => { playQuitSound(); setSelectedWord(null); }}
+                >
+                    <div 
+                        className="w-full max-w-2xl h-[60vh] relative animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button 
+                            onClick={() => { playQuitSound(); setSelectedWord(null); }}
+                            className="absolute -top-12 right-0 text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700 p-2 px-4 rounded-full transition-colors font-bold tracking-wide text-sm"
+                        >
+                            ✕ Close
+                        </button>
+
+                        <Flashcard 
+                            wordObj={selectedWord} 
+                            preferredAccent={preferredAccent}
+                            onEdit={(word) => { playClickSound(); setEditingWord(word); setSelectedWord(null); }}
+                            onPlayAudio={handlePlayAudio}
+                            onDelete={(id) => { playQuitSound(); handleDeleteWord(id); setSelectedWord(null); }}
+                        />
+                    </div>
+                </div>
             )}
 
             {/* Edit Word Modal */}
