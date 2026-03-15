@@ -15,6 +15,7 @@ export default function Vault({ session, dailyStreak = 0 }: { session: any, dail
     const [error, setError] = useState<string | null>(null);
     const [editingWord, setEditingWord] = useState<VocabularyWord | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
     const audioRef = useRef(null);
 
     // Pause audio when leaving the Dictionary
@@ -176,6 +177,11 @@ export default function Vault({ session, dailyStreak = 0 }: { session: any, dail
         );
     }
 
+    const filteredWords = vaultWords.filter(wordObj =>
+        wordObj.word.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (wordObj.definition || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     const dnaStats = calculateDNAStats(vaultWords);
     const academicWordCount = vaultWords.filter(w => w.dna_type === 'Academic').length;
     const currentRank = calculateAcademicRank(academicWordCount);
@@ -334,20 +340,41 @@ export default function Vault({ session, dailyStreak = 0 }: { session: any, dail
                     <p className="text-slate-500 dark:text-slate-400 text-lg max-w-md mx-auto">Play a reading mission and collect words to see them grow here in your dictionary.</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 p-6">
-                    {vaultWords.map((wordObj) => {
-                        return (
-                            <div 
+                <>
+                    {/* Search Bar */}
+                    <div className="mb-6 px-6 relative max-w-md">
+                        <div className="absolute inset-y-0 left-6 pl-3 flex items-center pointer-events-none">
+                            <svg className="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                        <input
+                            type="text"
+                            className="block w-full pl-10 pr-3 py-2.5 border border-slate-700 rounded-lg bg-slate-800/50 text-slate-300 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-sm transition-colors"
+                            placeholder="Search vocabulary..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 p-6">
+                        {filteredWords.length === 0 && (
+                            <div className="col-span-full py-12 text-center text-slate-500">
+                                No words found matching &ldquo;{searchQuery}&rdquo;.
+                            </div>
+                        )}
+                        {filteredWords.map((wordObj) => (
+                            <div
                                 key={wordObj.id || wordObj.word}
-                                onClick={() => { playClickSound(); setSelectedWord(wordObj); }} 
+                                onClick={() => { playClickSound(); setSelectedWord(wordObj); }}
                                 className="bg-slate-800/40 border border-slate-700/50 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800/80 transition-all hover:-translate-y-1 group"
                             >
                                 <h3 className="text-2xl font-bold text-indigo-400 group-hover:text-indigo-300 transition-colors truncate max-w-full px-2">{wordObj.word}</h3>
                                 <span className="text-xs text-slate-500 mt-2 uppercase tracking-widest">Tap to Review</span>
                             </div>
-                        );
-                    })}
-                </div>
+                        ))}
+                    </div>
+                </>
             )}
 
             {/* Flip-to-Center Modal */}

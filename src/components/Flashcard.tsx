@@ -148,7 +148,7 @@ export const Flashcard: React.FC<FlashcardProps> = ({
                   </div>
                 )}
 
-                {wordObj.word_connections.collocations?.length > 0 && (
+                {wordObj.word_connections.collocations?.length > 0 && wordObj.mastery_level > 2 && (
                   <div className="mb-3">
                     <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5 font-bold">Collocations</p>
                     <div className="flex flex-wrap gap-1.5">

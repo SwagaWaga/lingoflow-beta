@@ -24,6 +24,7 @@ export default function Admin({ session }) {
     const [articleList, setArticleList] = useState([]);
     const [articleListLoading, setArticleListLoading] = useState(false);
 
+
     // ── Release Notes state ──
     const [rnVersion, setRnVersion] = useState('');
     const [rnDate, setRnDate] = useState('');
@@ -84,6 +85,7 @@ export default function Admin({ session }) {
         setDnaEntries(newEntries);
     };
 
+    // ── Bulk Vocab Parser (pipe-delimited, 8 columns) ──
     const handleBulkParse = () => {
         if (!bulkVocabContent.trim()) {
             alert("Please paste the bulk import content first.");
@@ -97,17 +99,33 @@ export default function Admin({ session }) {
             const line = lines[i].trim();
             if (!line) continue;
 
-            const parts = line.split('|').map(p => p.trim());
-            if (parts.length >= 4 && parts[0] && parts[3]) {
-                parsedWords.push({
-                    word: parts[0],
-                    category: parts[1] || 'Lexicon',
-                    subject: parts[2] || '',
-                    definition: parts[3]
-                });
-            } else {
-                alert(`Syntax error on line ${i + 1}: incorrect format. Skipping.`);
+            const parts = line.split('|').map(item => item.trim());
+            const word         = parts[0] || '';
+            const category     = parts[1] || 'Lexicon';
+            const subject      = parts[2] || '';
+            const definition   = parts[3] || '';
+            const rawSynonyms  = parts[4] || '';
+            const rawAntonyms  = parts[5] || '';
+            const rawCollocations = parts[6] || '';
+            const rawFamily    = parts[7] || '';
+
+            if (!word) {
+                alert(`Syntax error on line ${i + 1}: missing word. Skipping.`);
+                continue;
             }
+
+            const synonyms    = rawSynonyms    ? rawSynonyms.split(',').map(s => s.trim()).filter(Boolean) : [];
+            const antonyms    = rawAntonyms    ? rawAntonyms.split(',').map(a => a.trim()).filter(Boolean) : [];
+            const collocations = rawCollocations ? rawCollocations.split(',').map(c => c.trim()).filter(Boolean) : [];
+            const wordFamily  = rawFamily;
+
+            parsedWords.push({
+                word,
+                category,
+                subject,
+                definition,
+                word_connections: { synonyms, antonyms, collocations, wordFamily }
+            });
         }
 
         if (parsedWords.length > 0) {
@@ -564,7 +582,7 @@ export default function Admin({ session }) {
                                         onChange={(e) => setBulkVocabContent(e.target.value)}
                                         rows="4"
                                         className="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all shadow-sm"
-                                        placeholder="Paste bulk words here using the format: Word | Category | Subject | Definition"
+                                        placeholder="Word | Category | Subject | Definition | Synonyms (csv) | Antonyms (csv) | Collocations (csv) | Word Family"
                                         disabled={isSubmitting}
                                     ></textarea>
                                     <div className="flex flex-wrap gap-2">
