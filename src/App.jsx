@@ -10,7 +10,8 @@ import ChangelogPanel from './components/ChangelogPanel';
 import OnboardingModal from './components/OnboardingModal';
 import { supabase } from './lib/supabaseClient';
 import { useAccent } from './context/AccentContext';
-import { playHover, playClick } from './hooks/useUISounds';
+import { playClickSound, playHover, playQuitSound } from './utils/playSound';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const NAV_ITEMS = [
   { key: 'game', label: '📖 Play' },
@@ -67,6 +68,7 @@ function App() {
   }, []);
 
   const handleLogOut = async () => {
+    playQuitSound();
     await supabase.auth.signOut();
   };
 
@@ -114,7 +116,7 @@ function App() {
                   {navItems.map(({ key, label }) => (
                     <button
                       key={key}
-                      onClick={() => { playClick(); handleNavClick(key); }}
+                      onClick={() => { playClickSound(); handleNavClick(key); }}
                       onMouseEnter={playHover}
                       style={{ transitionTimingFunction: 'cubic-bezier(0.25,0.8,0.25,1)' }}
                       className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 transform origin-center hover:scale-110 hover:mx-2 active:scale-95 ${currentView === key
@@ -167,7 +169,7 @@ function App() {
 
                 {/* What's New / Changelog trigger */}
                 <button
-                  onClick={() => { playClick(); setIsChangelogOpen(o => !o); }}
+                  onClick={() => { playClickSound(); setIsChangelogOpen(o => !o); }}
                   onMouseEnter={playHover}
                   className={`relative w-9 h-9 flex items-center justify-center rounded-lg border transition-all duration-200 hover:scale-110 active:scale-95
                     ${isChangelogOpen
@@ -184,7 +186,7 @@ function App() {
 
                 {/* Help / Tutorial trigger */}
                 <button
-                  onClick={() => { playClick(); setShowTutorial(true); }}
+                  onClick={() => { playClickSound(); setShowTutorial(true); }}
                   onMouseEnter={playHover}
                   className="w-9 h-9 flex items-center justify-center rounded-lg border transition-all duration-200 hover:scale-110 active:scale-95
                     bg-slate-800/60 border-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-700/80 hover:border-slate-600"
@@ -218,7 +220,7 @@ function App() {
                 {navItems.map(({ key, label }) => (
                   <button
                     key={key}
-                    onClick={() => handleNavClick(key)}
+                    onClick={() => { playClickSound(); handleNavClick(key); }}
                     style={{ transitionTimingFunction: 'cubic-bezier(0.25,0.8,0.25,1)' }}
                     className={`w-full text-left px-4 py-4 rounded-xl text-lg font-bold transition-all duration-300 transform origin-center hover:scale-[1.02] active:scale-95 ${currentView === key
                       ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
@@ -260,39 +262,41 @@ function App() {
           </header>
 
           {/* ── Main Content ── */}
-          <main className="w-full max-w-6xl mx-auto px-4 md:px-6 py-5 md:py-8">
+          <ErrorBoundary>
+            <main className="w-full max-w-6xl mx-auto px-4 md:px-6 py-5 md:py-8">
 
-            {currentView === 'game' && (
-              <>
-                {/* Hero Section */}
-                <div className="relative w-full bg-gradient-to-br from-slate-900 via-blue-950/60 to-slate-900 rounded-2xl md:rounded-3xl p-5 md:p-8 mb-5 md:mb-8 border border-blue-900/30 shadow-xl shadow-blue-950/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6 z-10">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-blue-400 font-bold text-xs md:text-sm uppercase tracking-widest mb-1">Welcome back 👋</p>
-                    <h2 className="text-2xl md:text-4xl font-black text-white tracking-tight leading-tight mb-1 md:mb-2">
-                      Master words with Axiom.
-                    </h2>
-                    <p className="text-slate-400 font-medium text-sm md:text-lg max-w-lg">
-                      Select a subject, read an article, and collect words to train in the Dojo.
-                    </p>
+              {currentView === 'game' && (
+                <>
+                  {/* Hero Section */}
+                  <div className="relative w-full bg-gradient-to-br from-slate-900 via-blue-950/60 to-slate-900 rounded-2xl md:rounded-3xl p-5 md:p-8 mb-5 md:mb-8 border border-blue-900/30 shadow-xl shadow-blue-950/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6 z-10">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-blue-400 font-bold text-xs md:text-sm uppercase tracking-widest mb-1">Welcome back 👋</p>
+                      <h2 className="text-2xl md:text-4xl font-black text-white tracking-tight leading-tight mb-1 md:mb-2">
+                        Master words with Axiom.
+                      </h2>
+                      <p className="text-slate-400 font-medium text-sm md:text-lg max-w-lg">
+                        Select a subject, read an article, and collect words to train in the Dojo.
+                      </p>
+                    </div>
+                    <div className="flex-shrink-0 flex flex-row md:flex-col items-center gap-2 md:gap-0 bg-blue-500/10 border border-blue-500/20 rounded-xl md:rounded-2xl px-5 md:px-8 py-3 md:py-5 shadow-sm">
+                      <span className="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-blue-400 to-indigo-500">{dailyStreak}</span>
+                      <span className="text-slate-400 font-bold text-xs md:text-sm uppercase tracking-wider md:mt-1">Day Streak</span>
+                    </div>
                   </div>
-                  <div className="flex-shrink-0 flex flex-row md:flex-col items-center gap-2 md:gap-0 bg-blue-500/10 border border-blue-500/20 rounded-xl md:rounded-2xl px-5 md:px-8 py-3 md:py-5 shadow-sm">
-                    <span className="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-blue-400 to-indigo-500">{dailyStreak}</span>
-                    <span className="text-slate-400 font-bold text-xs md:text-sm uppercase tracking-wider md:mt-1">Day Streak</span>
+
+                  {/* Reading Session Card */}
+                  <div className="relative w-full bg-slate-900 rounded-2xl md:rounded-3xl shadow-2xl shadow-black/40 border border-slate-800/80 overflow-hidden z-10">
+                    <Reader session={session} />
                   </div>
-                </div>
+                </>
+              )}
 
-                {/* Reading Session Card */}
-                <div className="relative w-full bg-slate-900 rounded-2xl md:rounded-3xl shadow-2xl shadow-black/40 border border-slate-800/80 overflow-hidden z-10">
-                  <Reader session={session} />
-                </div>
-              </>
-            )}
+              {currentView === 'admin' && <Admin />}
+              {currentView === 'dictionary' && <Dictionary session={session} dailyStreak={dailyStreak} />}
+              {currentView === 'dojo' && <Dojo session={session} />}
 
-            {currentView === 'admin' && <Admin />}
-            {currentView === 'dictionary' && <Dictionary session={session} dailyStreak={dailyStreak} />}
-            {currentView === 'dojo' && <Dojo session={session} />}
-
-          </main>
+            </main>
+          </ErrorBoundary>
         </div>
       )}
 

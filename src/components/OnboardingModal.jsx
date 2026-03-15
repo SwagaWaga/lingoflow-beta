@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import AxiomLogo from './AxiomLogo';
-import { playHover, playClick } from '../hooks/useUISounds';
+
 
 // ─── Step data ────────────────────────────────────────────────────────────────
 const STEPS = [

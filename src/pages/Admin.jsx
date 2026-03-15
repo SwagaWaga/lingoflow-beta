@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { AXIOM_SUBJECTS } from '../lib/constants';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { playClickSound, playQuitSound } from '../utils/playSound';
 
-export default function Admin() {
+export default function Admin({ session }) {
     const [adminTab, setAdminTab] = useState('article');
 
     // ── Article state ──
     const [title, setTitle] = useState('');
-    const [category, setCategory] = useState('Science');
+    const [category, setCategory] = useState(AXIOM_SUBJECTS[0].name);
     const [subSubject, setSubSubject] = useState('');
     const [difficulty, setDifficulty] = useState('Advanced');
     const [content, setContent] = useState('');
@@ -184,7 +187,7 @@ export default function Admin() {
 
     const clearArticleForm = useCallback(() => {
         setTitle('');
-        setCategory('Science');
+        setCategory(AXIOM_SUBJECTS[0].name);
         setSubSubject('');
         setDifficulty('Advanced');
         setContent('');
@@ -321,7 +324,7 @@ export default function Admin() {
                 ].map(({ key, label }) => (
                     <button
                         key={key}
-                        onClick={() => setAdminTab(key)}
+                        onClick={() => { playClickSound(); setAdminTab(key); }}
                         className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 border ${adminTab === key
                             ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20'
                             : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-gray-200 dark:border-slate-700 hover:border-blue-300 hover:text-blue-500'
@@ -421,6 +424,7 @@ export default function Admin() {
                         <div className="flex flex-col items-end gap-4 pt-2">
                             <button
                                 type="submit"
+                                onClick={playClickSound}
                                 disabled={rnSubmitting}
                                 className={`flex items-center gap-2.5 px-7 py-3 rounded-xl font-bold text-white text-sm shadow-lg transition-all duration-200 ${rnSubmitting
                                     ? 'bg-blue-500/50 cursor-not-allowed'
@@ -463,7 +467,7 @@ export default function Admin() {
                     {editingArticleId && (
                         <div className="flex items-center justify-between px-5 py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30">
                             <span className="text-sm font-bold text-cyan-400">✏️ Editing — changes will overwrite the existing record</span>
-                            <button onClick={clearArticleForm} className="text-xs font-bold text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 transition-all">✕ Cancel Edit</button>
+                            <button onClick={() => { playQuitSound(); clearArticleForm(); }} className="text-xs font-bold text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 transition-all">✕ Cancel Edit</button>
                         </div>
                     )}
 
@@ -501,11 +505,11 @@ export default function Admin() {
                                         className="w-full px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all appearance-none cursor-pointer"
                                         disabled={isSubmitting}
                                     >
-                                        <option value="Science">Science</option>
-                                        <option value="Technology">Technology</option>
-                                        <option value="Psychology">Psychology</option>
-                                        <option value="Environment">Environment</option>
-                                        <option value="Society">Society</option>
+                                        {AXIOM_SUBJECTS.map(subject => (
+                                            <option key={subject.name} value={subject.name}>
+                                                {subject.icon} {subject.name}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div>
@@ -566,7 +570,7 @@ export default function Admin() {
                                     <div className="flex flex-wrap gap-2">
                                         <button
                                             type="button"
-                                            onClick={handleBulkParse}
+                                            onClick={() => { playClickSound(); handleBulkParse(); }}
                                             disabled={isSubmitting || !bulkVocabContent.trim()}
                                             className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl shadow hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm hover:-translate-y-0.5"
                                         >
@@ -668,7 +672,7 @@ export default function Admin() {
                                     <div className="flex flex-wrap gap-2">
                                         <button
                                             type="button"
-                                            onClick={handleBulkQuizParse}
+                                            onClick={() => { playClickSound(); handleBulkQuizParse(); }}
                                             disabled={isSubmitting || !quizContent.trim()}
                                             className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-xl shadow hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm hover:-translate-y-0.5"
                                         >
@@ -764,6 +768,7 @@ export default function Admin() {
                             <div className="pt-4 flex flex-col items-end">
                                 <button
                                     type="submit"
+                                    onClick={playClickSound}
                                     disabled={isSubmitting}
                                     className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg transition-all duration-300 transform ${isSubmitting
                                         ? 'bg-blue-500/50 cursor-not-allowed scale-100'

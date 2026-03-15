@@ -113,7 +113,7 @@ export default function Quiz({ collectedWords, session, onComplete }) {
                     if (upsertError) {
                         console.error("Save failed", upsertError);
                     } else {
-                        console.log("Words saved successfully!");
+
                     }
                 } catch (e) {
                     console.error("Error saving quiz progress:", e);

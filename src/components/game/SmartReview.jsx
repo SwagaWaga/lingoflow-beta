@@ -38,7 +38,8 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                 dna_type: item.dna_type,
                 audio_url: item.audio_url || null,
                 mastery_level: 1,
-                last_practiced: null
+                last_practiced: null,
+                word_connections: item.word_connections || null
             }));
 
             const { error: upsertError } = await supabase
@@ -47,7 +48,7 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
 
             if (upsertError) throw upsertError;
 
-            console.log("Smart Review words saved to vault!");
+
             if (onComplete) onComplete();
         } catch (err) {
             console.error("Error saving vocabulary:", err);
@@ -114,9 +115,59 @@ export default function SmartReview({ collectedWords, session, onComplete }) {
                                 <p className="text-gray-600 dark:text-gray-300 italic mt-2 border-l-4 border-gray-200 dark:border-gray-600 pl-4 py-1.5 bg-gray-50 dark:bg-slate-900/50 rounded-r-lg">
                                     "{item.context}"
                                 </p>
+
+                                {/* Memory Hooks */}
+                                {item.word_connections && (
+                                    <div className="mt-4 space-y-2">
+                                        {item.word_connections.synonyms?.length > 0 && (
+                                            <div>
+                                                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-1">Synonyms</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {item.word_connections.synonyms.map((syn, i) => (
+                                                        <span key={i} className="px-2 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border border-cyan-100 dark:border-cyan-800/50 text-xs font-medium">
+                                                            {syn}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {item.word_connections.antonyms?.length > 0 && (
+                                            <div>
+                                                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-1">Antonyms</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {item.word_connections.antonyms.map((ant, i) => (
+                                                        <span key={i} className="px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 border border-rose-100 dark:border-rose-800/50 text-xs font-medium">
+                                                            {ant}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {item.word_connections.collocations?.length > 0 && (
+                                            <div>
+                                                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-1">Collocations</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {item.word_connections.collocations.map((col, i) => (
+                                                        <span key={i} className="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-800/50 text-xs font-medium">
+                                                            {col}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {item.word_connections.wordFamily && (
+                                            <div>
+                                                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest block mb-1">Word Family</span>
+                                                <p className="text-gray-600 dark:text-gray-400 text-xs italic bg-gray-50 dark:bg-slate-900/50 p-2 rounded-lg border border-gray-100 dark:border-slate-800">
+                                                    {item.word_connections.wordFamily}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
-                            <div className="flex flex-col">
+                            <div className="flex flex-col mt-4">
                                 <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Definition / Translation notes</label>
                                 <input
                                     type="text"

@@ -11,8 +11,8 @@ export default function AxiomLogo({ className = 'w-8 h-8' }) {
         >
             <defs>
                 <linearGradient id="axiom-grad" x1="0" y1="0" x2="48" y2="40" gradientUnits="userSpaceOnUse">
-                    <stop offset="0%" stop-color="#06b6d4" />
-                    <stop offset="100%" stop-color="#6366f1" />
+                    <stop offset="0%" stopColor="#06b6d4" />
+                    <stop offset="100%" stopColor="#6366f1" />
                 </linearGradient>
             </defs>
 

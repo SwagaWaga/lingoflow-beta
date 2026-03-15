@@ -3,18 +3,10 @@ import { supabase } from '../../lib/supabaseClient';
 import SmartReview from './SmartReview';
 import ReadingQuiz from './ReadingQuiz';
 import { useAccent } from '../../context/AccentContext';
-import { playHover, playClick } from '../../hooks/useUISounds';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { playHover, playClickSound } from '../../utils/playSound';
 
-const AXIOM_SUBJECTS = [
-  { name: 'Science', icon: '🔬' },
-  { name: 'Technology', icon: '💻' },
-  { name: 'Psychology', icon: '🧠' },
-  { name: 'Environment', icon: '🌍' },
-  { name: 'Society', icon: '🏛️' },
-  { name: 'Business', icon: '📊' },
-  { name: 'Economics', icon: '📈' },
-];
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { AXIOM_SUBJECTS } from '../../lib/constants';
 
 
 export default function Reader({ session }) {
@@ -35,7 +27,12 @@ export default function Reader({ session }) {
   const [feedback, setFeedback] = useState("");
   const [gamePhase, setGamePhase] = useState('reading');
   const [collectedWords, setCollectedWords] = useState([]);
-  const [isAnalyzingWord, setIsAnalyzingWord] = useState(false);
+
+  // Batch extraction state
+  const [pendingWords, setPendingWords] = useState([]);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [batchResults, setBatchResults] = useState([]);
+  const [savedFromBatch, setSavedFromBatch] = useState([]);
 
   // 1. Fetch metadata on mount
   useEffect(() => {
@@ -86,6 +83,9 @@ export default function Reader({ session }) {
         setArticle(data);
         setFeedback("");
         setCollectedWords([]);
+        setPendingWords([]);
+        setBatchResults([]);
+        setSavedFromBatch([]);
         setGamePhase('reading');
 
         // Fetch user's initial XP
@@ -120,125 +120,136 @@ export default function Reader({ session }) {
     return match ? match.trim() : text;
   };
 
-  const handleWordClick = async (word, fullText) => {
+  const handleWordClick = (word) => {
     const cleanWord = word.toLowerCase().replace(/[.,!?;:()"'`]/g, "");
     if (!cleanWord) return;
 
-    if (isAnalyzingWord) {
-      setFeedback("⏳ Please wait, AI is analyzing the previous word...");
-      setTimeout(() => setFeedback(""), 2000);
-      return;
-    }
+    const isPending = pendingWords.includes(cleanWord);
 
-    const isAlreadyCollected = collectedWords.some(item => item.word === cleanWord);
-
-    if (isAlreadyCollected) {
-      setCollectedWords(prev => prev.filter(item => item.word !== cleanWord));
+    if (isPending) {
+      setPendingWords(prev => prev.filter(w => w !== cleanWord));
+      // Also remove from batchResults if already processed
+      setBatchResults(prev => prev.filter(r => r.word !== cleanWord));
       setFeedback(`🗑️ Removed: ${cleanWord}`);
-      setTimeout(() => setFeedback(""), 1500);
-      return;
+    } else {
+      setPendingWords(prev => [...prev, cleanWord]);
+      setFeedback(`📌 Bagged: ${cleanWord}`);
     }
+    setTimeout(() => setFeedback(""), 1500);
+  };
 
-    const contextString = extractSentence(fullText, word);
-    setIsAnalyzingWord(true);
-    setFeedback(`⏳ Analyzing: ${cleanWord}...`);
+  const handleBatchExtraction = async (fullText) => {
+    if (pendingWords.length === 0 || isBatchProcessing) return;
+
+    setIsBatchProcessing(true);
+    setBatchResults([]);
 
     try {
-      // 1. Check Local Cache (Supabase)
-      let hasCache = false;
-      let aiDefinition = "";
-      let aiDnaType = "Basic";
-      let aiAudioUrl = null;
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-      if (session?.user?.id) {
-        const { data: cachedWord, error: dbErr } = await supabase
-          .from('user_vocabulary')
-          .select('definition, dna_type, audio_url')
-          .eq('user_id', session.user.id)
-          .eq('word', cleanWord)
-          .maybeSingle();
+      const prompt = `Read the following article text:
 
-        if (cachedWord && cachedWord.definition && cachedWord.definition !== "Definition not found") {
-          aiDefinition = cachedWord.definition;
-          aiDnaType = cachedWord.dna_type || "Basic";
-          aiAudioUrl = cachedWord.audio_url || null;
-          hasCache = true;
+${fullText}
+
+Now, provide concise, IELTS-level definitions for the following words based strictly on how they are used in this context: ${pendingWords.join(', ')}.
+
+You MUST return ONLY a raw, valid JSON object with NO markdown formatting, NO backticks, and NO extra text. The JSON must perfectly match this structure:
+[
+  {
+    "word": "...",
+    "definition": "...",
+    "partOfSpeech": "...",
+    "connections": {
+      "synonyms": ["...", "...", "..."],
+      "antonyms": ["...", "..."],
+      "wordFamily": "Noun: ..., Verb: ..., Adj: ...",
+      "collocations": ["...", "..."]
+    }
+  }
+]`;
+
+      const result = await model.generateContent(prompt);
+      const raw = result.response.text().trim();
+      console.log("RAW AI RESPONSE:", raw);
+
+      // Strip optional markdown code fences or other artifacts just in case
+      const cleanText = raw.replace(/```json/gi, '').replace(/```/gi, '').trim();
+      let parsedAiData = JSON.parse(cleanText);
+      console.log("PARSED DATA:", parsedAiData);
+
+      // Normalize to always be a flat array for batchResults
+      let normalizedData = [];
+      if (Array.isArray(parsedAiData)) {
+        // If the AI returned an array containing an array `[[ {...} ]]`
+        if (parsedAiData.length > 0 && Array.isArray(parsedAiData[0])) {
+          normalizedData = parsedAiData[0];
+        } else {
+          normalizedData = parsedAiData;
         }
-      }
-
-      // 2. Polyglot API Architecture if not in cache
-      if (!hasCache) {
-
-        // --- Step 2a: Pre-computed DNA Classification & Prefilled Definition ---
-        const dnaData = article?.dna_map?.[cleanWord.toLowerCase()];
-        aiDnaType = typeof dnaData === 'string' ? dnaData : (dnaData?.category || "Lexicon");
-        if (typeof dnaData === 'object' && dnaData?.definition) {
-          aiDefinition = dnaData.definition;
-        }
-
-        // --- Step 2b: Free Dictionary API for Audio (definition removed) ---
-        try {
-          const dictRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`);
-          if (dictRes.ok) {
-            const dictData = await dictRes.json();
-
-            // Safely extract audio URL based on user preference
-            if (dictData[0]?.phonetics && dictData[0].phonetics.length > 0) {
-              const validAudios = dictData[0].phonetics.filter(p => p.audio && p.audio.length > 0);
-              if (validAudios.length > 0) {
-                const requestedAudio = validAudios.find(p => p.audio.toLowerCase().includes(`-${preferredAccent.toLowerCase()}.`));
-                aiAudioUrl = requestedAudio ? requestedAudio.audio : validAudios[0].audio;
-              }
-            }
-          }
-        } catch (dictErr) {
-          console.warn("Free Dictionary API failed to get audio.", dictErr);
-        }
-
-        // --- Step 2c: LLM for Contextual Definitions ---
-        if (!aiDefinition) {
-          try {
-            console.log("Generating context-aware definition via LLM...");
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-            const prompt = `Act as an expert IELTS teacher. Look at the word '${cleanWord}' and read this specific sentence: '${contextString}'. Define the word EXACTLY as it is used in this specific context. If it is part of a phrase (like 'gray matter'), define the phrase. Keep the definition under 15 words, simple, and do not provide the standard dictionary definition if it conflicts with the context. Return ONLY the definition text without any markdown or quotes.`;
-            const result = await model.generateContent(prompt);
-            const text = result.response.text();
-
-            if (text && text.trim()) {
-              aiDefinition = text.replace(/^["']|["']$/g, '').trim();
-            } else {
-              aiDefinition = "Definition not found. Please review manually.";
-            }
-          } catch (aiErr) {
-            console.warn("LLM Fallback failed:", aiErr);
-            aiDefinition = "Definition not found. Please review manually.";
-          }
-        }
-      }
-
-      setCollectedWords(prev => [...prev, {
-        word: cleanWord,
-        context: contextString,
-        definition: aiDefinition,
-        dna_type: aiDnaType,
-        audio_url: aiAudioUrl
-      }]);
-
-      if (hasCache) {
-        setFeedback(`✨ Restored from Vault: ${cleanWord}`);
       } else {
-        setFeedback(`✨ Analyzed & Collected: ${cleanWord}`);
+        // If the AI returned a direct object `{...}` instead of an array
+        normalizedData = [parsedAiData];
       }
-      setTimeout(() => setFeedback(""), 2000);
+      console.log("NORMALIZED DATA:", normalizedData);
 
+      if (normalizedData.length > 0 && typeof normalizedData[0] === 'object') {
+        setBatchResults(normalizedData);
+      } else {
+        throw new Error("Unexpected response format: Expected an array of objects.");
+      }
     } catch (err) {
-      console.error("Analysis failed:", err);
-      setFeedback(`❌ Error analyzing ${cleanWord}`);
-      setTimeout(() => setFeedback(""), 2000);
+      console.error("Batch extraction failed:", err);
+      setFeedback("❌ Batch extraction failed. Please try again.");
+      setTimeout(() => setFeedback(""), 3000);
     } finally {
-      setIsAnalyzingWord(false);
+      setIsBatchProcessing(false);
+    }
+  };
+
+  const handleSaveWordToVault = async (item) => {
+    if (savedFromBatch.includes(item.word)) return;
+
+    const contextString = extractSentence(
+      typeof article?.content_data === 'string'
+        ? article.content_data
+        : article?.content_data?.text
+        || (article?.content_data?.segments ? article.content_data.segments.map(seg => seg.text).join('\n\n') : ''),
+      item.word
+    );
+
+    const dnaData = article?.dna_map?.[item.word.toLowerCase()];
+    const dnaType = typeof dnaData === 'string' ? dnaData : (dnaData?.category || "Lexicon");
+
+    setCollectedWords(prev => [
+      ...prev.filter(w => w.word !== item.word),
+      { word: item.word, context: contextString, definition: item.definition, dna_type: dnaType, audio_url: null, word_connections: item.connections || null }
+    ]);
+    setSavedFromBatch(prev => [...prev, item.word]);
+
+    // Persist to Supabase
+    if (session?.user?.id) {
+      try {
+        const dbPayload = {
+          user_id: session.user.id,
+          word: item.word,
+          definition: item.definition,
+          part_of_speech: item.partOfSpeech || null,
+          mastery_level: 0,
+          context: contextString,
+          dna_type: dnaType,
+          audio_url: null,
+          word_connections: item.connections || null
+        };
+
+        const { error: dbErr } = await supabase.from('user_vocabulary').upsert(dbPayload, { onConflict: 'user_id,word' });
+        if (dbErr) {
+          console.error("Supabase Insert Error:", dbErr);
+        }
+      } catch (dbErr) {
+        console.error('Supabase upsert failed unexpectedly:', dbErr);
+      }
     }
   };
 
@@ -251,8 +262,25 @@ export default function Reader({ session }) {
     setArticle(null);
     setError(null);
     setCollectedWords([]);
+    setPendingWords([]);
+    setBatchResults([]);
+    setSavedFromBatch([]);
     setGamePhase('reading');
   };
+
+  // Auto-trigger batch extraction as soon as the comprehension quiz completes
+  useEffect(() => {
+    if (gamePhase === 'quiz' && pendingWords.length > 0 && !isBatchProcessing && batchResults.length === 0) {
+      const text =
+        typeof article?.content_data === 'string'
+          ? article.content_data
+          : article?.content_data?.text ||
+          (article?.content_data?.segments
+            ? article.content_data.segments.map(seg => seg.text).join('\n\n')
+            : '');
+      handleBatchExtraction(text);
+    }
+  }, [gamePhase]);
 
   // --- View 0: Initial Loading Metadata ---
   if (isLoadingMetadata) {
@@ -293,7 +321,7 @@ export default function Reader({ session }) {
               return (
                 <button
                   key={subject.name}
-                  onClick={() => { playClick(); setSelectedSubject(subject.name); }}
+                  onClick={() => { playClickSound(); setSelectedSubject(subject.name); }}
                   onMouseEnter={playHover}
                   className="group flex flex-col items-start justify-between min-h-40 h-full p-7 rounded-2xl border transition-all duration-200 ease-in-out cursor-pointer bg-slate-900 border-slate-800 hover:border-slate-700 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/30 active:scale-95 shadow-sm"
                 >
@@ -454,14 +482,74 @@ export default function Reader({ session }) {
     );
   }
 
-  // --- Smart Review Phase View ---
+  // --- Smart Review Phase View (with auto-processed vocabulary results beneath) ---
   if (gamePhase === 'quiz') {
     return (
-      <SmartReview
-        collectedWords={collectedWords}
-        session={session}
-        onComplete={clearSelection}
-      />
+      <div className="font-sans">
+        <SmartReview
+          collectedWords={collectedWords}
+          session={session}
+          onComplete={clearSelection}
+        />
+
+        {/* Auto-processed vocabulary results */}
+        {(isBatchProcessing || batchResults.length > 0) && (
+          <div className="max-w-3xl mx-auto px-4 pb-8">
+            <div className="mt-6 bg-slate-900 border border-indigo-500/30 rounded-3xl overflow-hidden shadow-2xl shadow-indigo-950/50">
+              <div className="p-6 flex items-center gap-3 border-b border-indigo-500/20">
+                <span className="text-2xl">⚡</span>
+                <div>
+                  <h2 className="text-white font-bold text-lg">Vocabulary Results</h2>
+                  <p className="text-slate-400 text-sm">{pendingWords.length} word{pendingWords.length !== 1 ? 's' : ''} processed from your reading</p>
+                </div>
+              </div>
+
+              <div className="p-6">
+                {isBatchProcessing ? (
+                  <div className="flex items-center gap-3 text-indigo-300 font-semibold">
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    <span>Processing vocabulary definitions...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-slate-400 text-sm font-semibold uppercase tracking-wider mb-4">AI Definitions — Review & Save</p>
+                    {batchResults.map((item) => {
+                      const isSaved = savedFromBatch.includes(item.word);
+                      return (
+                        <div
+                          key={item.word}
+                          className={`flex items-start justify-between gap-4 p-4 rounded-2xl border transition-all duration-300 ${isSaved
+                            ? 'bg-emerald-900/20 border-emerald-700/40'
+                            : 'bg-slate-800/60 border-slate-700/50 hover:border-indigo-500/40'
+                            }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-cyan-300 font-black text-base mb-1">{item.word}</p>
+                            <p className="text-slate-300 text-sm leading-relaxed">{item.definition}</p>
+                          </div>
+                          <button
+                            onClick={() => handleSaveWordToVault(item)}
+                            disabled={isSaved}
+                            className={`flex-shrink-0 text-sm font-bold px-4 py-2 rounded-xl transition-all duration-200 ${isSaved
+                              ? 'bg-emerald-700/30 text-emerald-400 cursor-default'
+                              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-900/50 active:scale-95'
+                              }`}
+                          >
+                            {isSaved ? '✅ Saved' : '+ Save'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -507,14 +595,17 @@ export default function Reader({ session }) {
                   if (!word) return null;
                   const cleanCheckWord = word.toLowerCase().replace(/[.,!?;:()"'`]/g, "");
                   const isCollected = collectedWords.some(item => item.word === cleanCheckWord);
+                  const isPending = pendingWords.includes(cleanCheckWord);
 
                   return (
                     <span key={`${pIdx}-${wIdx}`}>
                       <button
-                        onClick={() => handleWordClick(word, fullArticleText)}
+                        onClick={() => handleWordClick(word)}
                         className={`inline-block py-1 rounded transition-colors ${isCollected
                           ? 'bg-yellow-200 dark:bg-yellow-700/60 text-yellow-900 dark:text-yellow-100 border-b-2 border-yellow-400 dark:border-yellow-600 font-medium px-1'
-                          : 'hover:bg-slate-200 dark:hover:bg-slate-700'
+                          : isPending
+                            ? 'bg-cyan-900/40 text-cyan-300 rounded px-1 transition-colors'
+                            : 'hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
                       >
                         {word}
@@ -529,40 +620,14 @@ export default function Reader({ session }) {
         </div>
       </div>
 
-      {/* Vocabulary Vault */}
-      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl overflow-hidden border border-slate-100 dark:border-slate-700 transition-colors">
-        <div className="bg-slate-800 dark:bg-slate-900 p-6 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <span className="text-3xl">🗃️</span>
-            <h2 className="text-white font-bold text-xl">Vocabulary Vault</h2>
-          </div>
-          <span className="bg-slate-700 dark:bg-slate-800 text-indigo-300 font-bold px-4 py-1.5 rounded-full border border-slate-600">
-            {collectedWords.length} Words Collected
-          </span>
-        </div>
-
-        <div className="p-6 bg-slate-50 dark:bg-slate-800/50 min-h-[100px]">
-          {collectedWords.length === 0 ? (
-            <p className="text-slate-400 dark:text-slate-500 text-center italic py-4">Click any word in the article you want to learn to add it to your vault.</p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {collectedWords.map((item, idx) => (
-                <span key={idx} className="bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold px-4 py-2 rounded-xl shadow-sm hover:border-blue-300 hover:text-blue-600 transition-colors cursor-default" title={item.context}>
-                  {item.word}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="p-6 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700">
-          <button
-            onClick={() => setGamePhase('comprehension')}
-            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-extrabold text-lg rounded-2xl shadow-lg hover:-translate-y-1 hover:shadow-blue-500/40 transition-all"
-          >
-            Finish & Take Quiz 🚀
-          </button>
-        </div>
+      {/* Finish Article Button */}
+      <div className="mt-8">
+        <button
+          onClick={() => setGamePhase('comprehension')}
+          className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-extrabold text-lg rounded-2xl shadow-lg hover:-translate-y-1 hover:shadow-blue-500/40 transition-all"
+        >
+          Finish & Take Quiz 🚀
+        </button>
       </div>
 
       {/* Feedback Animation */}

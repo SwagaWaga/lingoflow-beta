@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import AchievementsBoard from '../components/AchievementsBoard';
 import { useAccent } from '../context/AccentContext';
+import { playClickSound, playQuitSound } from '../utils/playSound';
 
 export default function Dictionary({ session, dailyStreak = 0 }) {
     const { preferredAccent } = useAccent();
@@ -213,6 +214,35 @@ export default function Dictionary({ session, dailyStreak = 0 }) {
         }
     };
 
+    const handleDeleteWord = async (wordId) => {
+        const confirmDelete = window.confirm("Are you sure you want to delete this word from your Vault? This cannot be undone.");
+        if (!confirmDelete) return;
+
+        try {
+            // Optimistic UI update
+            setVaultWords(prev => prev.filter(word => word.id !== wordId));
+
+            const { error: deleteError } = await supabase
+                .from('user_vocabulary')
+                .delete()
+                .eq('id', wordId);
+
+            if (deleteError) {
+                throw deleteError;
+            }
+        } catch (err) {
+            console.error("Error deleting word:", err);
+            alert("Failed to delete word. Refreshing your vault.");
+            // Revert optimistic delete if it fails
+            const { data } = await supabase
+                .from('user_vocabulary')
+                .select('*')
+                .eq('user_id', session.user.id)
+                .order('last_practiced', { ascending: false });
+            if (data) setVaultWords(data);
+        }
+    };
+
     return (
         <div className="max-w-6xl mx-auto p-4 md:p-6 font-sans">
             {/* Gamified Banner */}
@@ -313,7 +343,7 @@ export default function Dictionary({ session, dailyStreak = 0 }) {
                                         </h3>
                                         <div className="flex items-center space-x-2 shrink-0">
                                             <button
-                                                onClick={() => setEditingWord(wordObj)}
+                                                onClick={() => { playClickSound(); setEditingWord(wordObj); }}
                                                 className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-indigo-500 dark:text-slate-300 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-all flex items-center justify-center shadow-sm shrink-0"
                                                 title="Edit Word"
                                             >
@@ -325,6 +355,13 @@ export default function Dictionary({ session, dailyStreak = 0 }) {
                                                 title="Play Pronunciation"
                                             >
                                                 🔊
+                                            </button>
+                                            <button
+                                                onClick={() => { playQuitSound(); handleDeleteWord(wordObj.id); }}
+                                                className="p-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-red-500 dark:text-slate-300 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/40 transition-all flex items-center justify-center shadow-sm shrink-0"
+                                                title="Delete Word"
+                                            >
+                                                🗑️
                                             </button>
                                             <span className="ml-2 px-2 py-0.5 bg-slate-700 text-slate-300 text-[10px] font-bold uppercase tracking-widest rounded-full flex items-center justify-center shrink-0">
                                                 {preferredAccent}
@@ -341,6 +378,63 @@ export default function Dictionary({ session, dailyStreak = 0 }) {
                                     <div className="mb-4">
                                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Definition</span>
                                         <p className="text-slate-600 dark:text-slate-300 font-medium leading-snug line-clamp-3">{wordObj.definition}</p>
+                                    </div>
+                                )}
+
+                                {/* Memory Hooks / Connections */}
+                                {wordObj.word_connections && (
+                                    <div className="mb-4 space-y-3">
+                                        {/* Synonyms */}
+                                        {wordObj.word_connections.synonyms?.length > 0 && (
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Synonyms</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {wordObj.word_connections.synonyms.map((syn, idx) => (
+                                                        <span key={idx} className="px-2 py-0.5 rounded-md bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border border-cyan-100 dark:border-cyan-800/50 text-xs font-medium">
+                                                            {syn}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Antonyms */}
+                                        {wordObj.word_connections.antonyms?.length > 0 && (
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Antonyms</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {wordObj.word_connections.antonyms.map((ant, idx) => (
+                                                        <span key={idx} className="px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 border border-rose-100 dark:border-rose-800/50 text-xs font-medium">
+                                                            {ant}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Collocations */}
+                                        {wordObj.word_connections.collocations?.length > 0 && (
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Collocations</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {wordObj.word_connections.collocations.map((col, idx) => (
+                                                        <span key={idx} className="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-800/50 text-xs font-medium">
+                                                            {col}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Word Family */}
+                                        {wordObj.word_connections.wordFamily && (
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">Word Family</span>
+                                                <p className="text-slate-600 dark:text-slate-400 text-xs italic bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+                                                    {wordObj.word_connections.wordFamily}
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -400,7 +494,7 @@ export default function Dictionary({ session, dailyStreak = 0 }) {
                             <div className="flex gap-4 justify-end pt-6 mt-6 border-t border-slate-100 dark:border-slate-700">
                                 <button
                                     type="button"
-                                    onClick={() => setEditingWord(null)}
+                                    onClick={() => { playQuitSound(); setEditingWord(null); }}
                                     disabled={isSaving}
                                     className="px-6 py-3 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                 >
@@ -408,6 +502,7 @@ export default function Dictionary({ session, dailyStreak = 0 }) {
                                 </button>
                                 <button
                                     type="submit"
+                                    onClick={playClickSound}
                                     disabled={isSaving}
                                     className="px-6 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg flex items-center gap-2 transition-all disabled:opacity-50 hover:-translate-y-0.5"
                                 >

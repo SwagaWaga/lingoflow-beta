@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { playClickSound } from '../../utils/playSound';
 
 export default function ReadingQuiz({ questions: propQuestions, article, onComplete }) {
     const [questions, setQuestions] = useState(propQuestions && propQuestions.length > 0 ? propQuestions : (article?.content_data?.quiz || []));
@@ -8,11 +9,13 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
 
     const handleOptionClick = (option) => {
         if (isAnswered) return; // Prevent multiple clicks
+        playClickSound();
         setSelectedAnswer(option);
         setIsAnswered(true);
     };
 
     const handleNext = () => {
+        playClickSound();
         if (currentQuestionIndex < questions.length - 1) {
             setCurrentQuestionIndex(prev => prev + 1);
             setSelectedAnswer(null);
@@ -29,7 +32,7 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
                 <h3 className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight mb-2">No quiz available</h3>
                 <p className="text-slate-500 dark:text-slate-400 font-medium mb-8">This article doesn't have a reading comprehension test assigned to it yet.</p>
                 <button
-                    onClick={onComplete}
+                    onClick={() => { playClickSound(); onComplete(); }}
                     className="px-8 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 hover:shadow-blue-500/40 transition-all hover:-translate-y-0.5"
                 >
                     Skip to Vocabulary Review
@@ -41,7 +44,7 @@ export default function ReadingQuiz({ questions: propQuestions, article, onCompl
     const currentQuestion = questions[currentQuestionIndex];
     const isCorrect = (selectedAnswer || '').trim() === (currentQuestion.correct_answer || currentQuestion.answer || '').trim();
 
-    console.log("Current Question Data:", currentQuestion);
+
 
     return (
         <div className="max-w-3xl mx-auto p-4 md:p-6 font-sans">
