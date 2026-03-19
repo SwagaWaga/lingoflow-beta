@@ -33,6 +33,8 @@ export default function Dojo({ session }) {
     const [masterBatch, setMasterBatch] = useState([]);
     const [originalBatchCount, setOriginalBatchCount] = useState(0);
     const [currentIndex, setCurrentIndex] = useState(0);
+    const [currentSectionIndex, setCurrentSectionIndex] = useState(1);
+    const [totalSections, setTotalSections] = useState(1);
     const [currentPhase, setCurrentPhase] = useState(0);
     const [options, setOptions] = useState([]);
     const [isSessionComplete, setIsSessionComplete] = useState(false);
@@ -121,21 +123,23 @@ export default function Dojo({ session }) {
             return;
         }
 
+        const SECTION_LIMIT = 5;
+
         const phase1Bucket = remainingWords.filter(w => (w.mastery_level || 1) <= 1);
         const phase2Bucket = remainingWords.filter(w => w.mastery_level === 2);
         const phase3Bucket = remainingWords.filter(w => w.mastery_level === 3);
 
         if (phase1Bucket.length > 0) {
-            setPracticeBatch(phase1Bucket);
+            setPracticeBatch(phase1Bucket.slice(0, SECTION_LIMIT));
             setCurrentPhase(0);
             setCurrentIndex(0);
             setIsRevealed(false);
         } else if (phase2Bucket.length > 0) {
-            setPracticeBatch(phase2Bucket);
+            setPracticeBatch(phase2Bucket.slice(0, SECTION_LIMIT));
             setCurrentPhase(2);
             setCurrentIndex(0);
         } else if (phase3Bucket.length > 0) {
-            setPracticeBatch(phase3Bucket);
+            setPracticeBatch(phase3Bucket.slice(0, SECTION_LIMIT));
             setCurrentPhase(3);
             setCurrentIndex(0);
         } else {
@@ -162,7 +166,7 @@ export default function Dojo({ session }) {
                 .lt('mastery_level', 4)
                 .lte('next_review_date', new Date().toISOString())
                 .order('next_review_date', { ascending: true, nullsFirst: true })
-                .limit(50);
+                .limit(20);
 
             if (error) throw error;
 
@@ -173,9 +177,9 @@ export default function Dojo({ session }) {
             } else {
                 // Phase 1 requires a minimum of 4 words to prevent process-of-elimination guessing
                 const rawPhase1 = fetchedWords.filter(w => (w.mastery_level || 1) <= 1);
-                const phase1 = rawPhase1.length >= 4 ? rawPhase1.slice(0, 5) : [];
-                const phase2 = fetchedWords.filter(w => w.mastery_level === 2).slice(0, 5);
-                const phase3 = fetchedWords.filter(w => w.mastery_level === 3).slice(0, 5);
+                const phase1 = rawPhase1.length >= 4 ? rawPhase1 : [];
+                const phase2 = fetchedWords.filter(w => w.mastery_level === 2);
+                const phase3 = fetchedWords.filter(w => w.mastery_level === 3);
 
                 const sessionWords = [...phase1, ...phase2, ...phase3];
 
@@ -187,6 +191,8 @@ export default function Dojo({ session }) {
                 } else {
                     setMasterBatch(sessionWords);
                     setOriginalBatchCount(sessionWords.length);
+                    setTotalSections(Math.ceil(sessionWords.length / 5));
+                    setCurrentSectionIndex(1);
                     loadNextBucket(sessionWords);
                 }
             }
@@ -293,6 +299,7 @@ export default function Dojo({ session }) {
                 setCurrentIndex(prev => prev + 1);
             } else {
                 // Phase Bucket Completed
+                setCurrentSectionIndex(prev => prev + 1);
                 const updatedMaster = (masterBatch || []).filter(w => !(practiceBatch || []).find(p => p.id === w.id));
                 setMasterBatch(updatedMaster);
                 loadNextBucket(updatedMaster);
@@ -342,6 +349,7 @@ export default function Dojo({ session }) {
         setPhase2Results(null);
         setPhase2Answers({});
         // Clean processed words out and move to next bucket
+        setCurrentSectionIndex(prev => prev + 1);
         const updatedMaster = (masterBatch || []).filter(w => !(practiceBatch || []).find(p => p.id === w.id));
         setMasterBatch(updatedMaster);
         loadNextBucket(updatedMaster);
@@ -410,6 +418,7 @@ export default function Dojo({ session }) {
         if (currentIndex + 1 < (practiceBatch?.length || 0)) {
             setCurrentIndex(prev => prev + 1);
         } else {
+            setCurrentSectionIndex(prev => prev + 1);
             const updatedMaster = (masterBatch || []).filter(w => !(practiceBatch || []).find(p => p.id === w.id));
             setMasterBatch(updatedMaster);
             loadNextBucket(updatedMaster);
@@ -472,7 +481,7 @@ export default function Dojo({ session }) {
                             onClick={handleTrainAgain}
                             className="px-8 py-4 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-lg rounded-2xl shadow-lg shadow-indigo-900/50 transition-all hover:-translate-y-1"
                         >
-                            Train Again
+                            Start Another Session
                         </button>
                         <button
                             onClick={() => { playQuitSound(); window.location.href = '/library'; }}
@@ -536,17 +545,23 @@ export default function Dojo({ session }) {
 
     return (
         <div className="max-w-4xl mx-auto p-6 font-sans">
-            <div className="flex justify-between items-center mb-8 px-4">
-                {currentPhase === 2 ? (
-                    <div className="bg-indigo-900/40 border border-indigo-700/50 px-6 py-2 rounded-full font-bold text-indigo-300 text-sm tracking-widest uppercase">
-                        Phase 2: Gap-Fill Worksheet — {practiceBatch.length} Word{practiceBatch.length !== 1 ? 's' : ''}
+            {/* Session Progress Bar */}
+            {practiceBatch && practiceBatch.length > 0 && (
+                <div className="mb-8 px-4">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Section Progress</span>
+                        <span className="text-sm font-bold text-slate-400">
+                            Word {currentIndex + 1} of {practiceBatch.length}
+                        </span>
                     </div>
-                ) : (
-                    <div className="bg-surface-raised px-6 py-2 rounded-full border border-border font-bold text-text-muted text-sm tracking-widest uppercase">
-                        Phase {currentPhase}: Round {currentIndex + 1} / {practiceBatch.length}
+                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-gradient-to-r from-orange-400 to-red-500 rounded-full transition-all duration-500 ease-out"
+                            style={{ width: `${Math.min(100, ((currentIndex + 1) / practiceBatch.length) * 100)}%` }}
+                        />
                     </div>
-                )}
-            </div>
+                </div>
+            )}
 
             <div className="bg-surface p-10 rounded-[2.5rem] shadow-xl border border-border mb-8 max-w-2xl mx-auto relative overflow-hidden group transition-colors duration-300">
                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-orange-400 to-red-500 opacity-80 group-hover:opacity-100 transition-opacity"></div>
@@ -555,8 +570,8 @@ export default function Dojo({ session }) {
                     <div className="flex flex-col items-center justify-center space-y-8 py-4">
                         <span className="text-xs font-black text-blue-500 uppercase tracking-[0.2em] block mb-2">Phase 0: Memory Encoding</span>
 
-                        <div className="flex items-center space-x-4">
-                            <h2 className="text-5xl font-black text-slate-800 dark:text-white capitalize tracking-tight">
+                        <div className="flex flex-row items-center justify-between w-full gap-3 px-4 sm:px-8">
+                            <h2 className="flex-1 min-w-0 text-3xl sm:text-5xl font-black text-slate-800 dark:text-white capitalize tracking-tight text-left sm:text-center break-all sm:break-words">
                                 {currentItem.word}
                             </h2>
                             <button
@@ -565,10 +580,10 @@ export default function Dojo({ session }) {
                                     utterance.lang = 'en-US';
                                     window.speechSynthesis.speak(utterance);
                                 }}
-                                className="p-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full hover:bg-blue-100 dark:hover:bg-slate-600 hover:text-blue-600 transition-colors shadow-sm"
+                                className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full hover:bg-blue-100 dark:hover:bg-slate-600 hover:text-blue-600 transition-colors shadow-sm"
                                 title="Pronounce"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-7 h-7">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
                                     <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z" />
                                     <path d="M15.932 7.757a.75.75 0 011.061 0 5.25 5.25 0 010 7.424.75.75 0 11-1.06-1.06 3.75 3.75 0 000-5.304.75.75 0 010-1.06z" />
                                 </svg>
@@ -621,16 +636,19 @@ export default function Dojo({ session }) {
                                                         ))}
                                                     </div>
                                                 )}
-                                                {currentItem.word_connections.collocations?.length > 0 && (
-                                                    <div className="flex items-center flex-wrap gap-2">
-                                                        <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mr-1">Collocations:</span>
-                                                        {currentItem.word_connections.collocations.map(col => (
-                                                            <span key={col} className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                                                                {col}
-                                                            </span>
-                                                        ))}
+                                                {/* NUCLEAR LOCK: Only render if we can prove the phase is >= 3 */}
+                                                {Number(currentPhase) >= 3 && currentItem.word_connections?.collocations?.length > 0 ? (
+                                                    <div className="mt-6 pt-6 border-t border-slate-700/50">
+                                                        <h4 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Collocations</h4>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {currentItem.word_connections.collocations.map((collocation, idx) => (
+                                                                <span key={idx} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 break-words">
+                                                                    {collocation}
+                                                                </span>
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                )}
+                                                ) : null}
                                             </div>
                                         </div>
                                     )}
@@ -683,15 +701,19 @@ export default function Dojo({ session }) {
                                                 ))}
                                             </div>
                                         )}
-                                        {currentItem.word_connections.collocations?.length > 0 && (
-                                            <div className="flex items-center justify-center flex-wrap gap-2">
-                                                {currentItem.word_connections.collocations.map(col => (
-                                                    <span key={col} className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                                                        {col}
-                                                    </span>
-                                                ))}
+                                        {/* NUCLEAR LOCK: Only render if we can prove the phase is >= 3 */}
+                                        {Number(currentPhase) >= 3 && currentItem.word_connections?.collocations?.length > 0 ? (
+                                            <div className="mt-6 pt-6 border-t border-slate-700/50 w-full text-left">
+                                                <h4 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Collocations</h4>
+                                                <div className="flex flex-wrap gap-2 justify-center">
+                                                    {currentItem.word_connections.collocations.map((collocation, idx) => (
+                                                        <span key={idx} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 break-words">
+                                                            {collocation}
+                                                        </span>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        )}
+                                        ) : null}
                                     </div>
                                 </div>
                             )}
@@ -741,16 +763,19 @@ export default function Dojo({ session }) {
                                                         </p>
                                                     </div>
                                                 )}
-                                                {wordObj.word_connections.collocations?.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1.5 items-center">
-                                                        <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mr-1">Collocations</span>
-                                                        {wordObj.word_connections.collocations.map((col, i) => (
-                                                            <span key={i} className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                                                                {col}
-                                                            </span>
-                                                        ))}
+                                                {/* NUCLEAR LOCK: Only render if we can prove the phase is >= 3 */}
+                                                {Number(currentPhase) >= 3 && wordObj.word_connections?.collocations?.length > 0 ? (
+                                                    <div className="mt-6 pt-6 border-t border-slate-700/50">
+                                                        <h4 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Collocations</h4>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {wordObj.word_connections.collocations.map((collocation, idx) => (
+                                                                <span key={idx} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 break-words">
+                                                                    {collocation}
+                                                                </span>
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                )}
+                                                ) : null}
                                             </div>
                                         )}
                                     </div>

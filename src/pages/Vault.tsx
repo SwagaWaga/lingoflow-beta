@@ -380,26 +380,20 @@ export default function Vault({ session, dailyStreak = 0 }: { session: any, dail
             {/* Flip-to-Center Modal */}
             {selectedWord && (
                 <div 
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
+                    className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-950/80 backdrop-blur-sm"
                     onClick={() => { playQuitSound(); setSelectedWord(null); }}
                 >
                     <div 
-                        className="w-full max-w-2xl h-[60vh] relative animate-in zoom-in-95 duration-200"
+                        className="w-full h-[100dvh] sm:h-[70vh] sm:max-w-2xl sm:rounded-2xl relative animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300 overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <button 
-                            onClick={() => { playQuitSound(); setSelectedWord(null); }}
-                            className="absolute -top-12 right-0 text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700 p-2 px-4 rounded-full transition-colors font-bold tracking-wide text-sm"
-                        >
-                            ✕ Close
-                        </button>
-
                         <Flashcard 
                             wordObj={selectedWord} 
                             preferredAccent={preferredAccent}
                             onEdit={(word) => { playClickSound(); setEditingWord(word); setSelectedWord(null); }}
                             onPlayAudio={handlePlayAudio}
                             onDelete={(id) => { playQuitSound(); handleDeleteWord(id); setSelectedWord(null); }}
+                            onClose={() => { playQuitSound(); setSelectedWord(null); }}
                         />
                     </div>
                 </div>
