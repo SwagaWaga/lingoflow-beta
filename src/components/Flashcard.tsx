@@ -19,19 +19,37 @@ export const Flashcard: React.FC<FlashcardProps> = ({
   onClose
 }) => {
   const [isFlipped, setIsFlipped] = useState(false);
+  const [isFlipping, setIsFlipping] = useState(false);
+
+  const handleFlip = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (isFlipping) return;
+    setIsFlipping(true);
+    setIsFlipped(prev => !prev);
+    setTimeout(() => setIsFlipping(false), 500); // Matches duration-500
+  };
 
   // Determine if the word has passed the early learning stages.
   // If mastery_level is undefined, 0, 1, or 2, this MUST evaluate to false.
   const currentPhase = wordObj.mastery_level || 0; 
   const isAdvancedPhase = Number(currentPhase) >= 3;
 
+  const getGrowthIndicator = (level: number) => {
+    if (level >= 5) return { icon: '🌟', label: 'Mastered', color: 'text-yellow-400' };
+    if (level === 4) return { icon: '🌳', label: 'Tree', color: 'text-emerald-400' };
+    if (level === 3) return { icon: '🪴', label: 'Plant', color: 'text-emerald-400' };
+    if (level === 2) return { icon: '🌿', label: 'Sprout', color: 'text-emerald-400' };
+    return { icon: '🌱', label: 'Seedling', color: 'text-emerald-400' };
+  };
+  const growth = getGrowthIndicator(wordObj.mastery_level || 1);
+
   return (
     <div 
-      className="w-full h-full relative [perspective:1000px]"
+      className="w-full h-[75vh] sm:h-auto sm:min-h-[500px] flex flex-col overflow-hidden relative [perspective:1000px]"
     >
       {/* Inner card wrapper handling the 3D flip */}
       <div 
-        className={`w-full h-full relative [transform-style:preserve-3d] transition-transform duration-500 ease-out ${
+        className={`w-full h-full relative flex-1 [transform-style:preserve-3d] transition-transform duration-500 ease-out ${
           isFlipped ? '[transform:rotateY(180deg)]' : ''
         }`}
       >
@@ -66,16 +84,23 @@ export const Flashcard: React.FC<FlashcardProps> = ({
 
           {/* Scrollable content */}
           <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-8 pb-28 flex flex-col items-center justify-center w-full">
-            <h2 className="w-full min-w-0 text-3xl sm:text-5xl md:text-6xl font-black text-indigo-400 capitalize tracking-tight text-center leading-tight break-all sm:break-words text-wrap">
+            <h2 className="w-full min-w-0 text-3xl sm:text-5xl font-extrabold text-white capitalize break-words hyphens-auto text-center leading-tight">
               {wordObj.word}
             </h2>
+
+            {/* Dynamic Growth Indicator Badge */}
+            <div className="inline-flex items-center justify-center gap-1.5 mt-4 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-800/60 border border-slate-700/50 text-slate-400 shadow-sm" title={`Mastery Level: ${wordObj.mastery_level || 1}`}>
+              <span className={growth.color}>{growth.icon}</span>
+              <span>{growth.label}</span>
+            </div>
+
             <p className="mt-4 text-xs text-slate-500 font-medium tracking-widest uppercase opacity-70">
               Tap to see definition
             </p>
           </div>
 
           {/* ── Sticky Footer (Front) ── */}
-          <div className="absolute bottom-0 left-0 w-full p-4 bg-slate-900/95 backdrop-blur-md border-t border-slate-700/50 flex justify-center gap-4 z-10 sm:rounded-b-2xl">
+          <div className="flex-shrink-0 w-full p-4 bg-slate-900 border-t border-slate-700 flex justify-center gap-4 z-10 sm:rounded-b-2xl">
             {onPlayAudio && (
               <button
                 onClick={() => onPlayAudio(wordObj.word)}
@@ -86,8 +111,9 @@ export const Flashcard: React.FC<FlashcardProps> = ({
               </button>
             )}
             <button
-              onClick={() => setIsFlipped(true)}
-              className="min-h-[48px] px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all flex items-center gap-2 font-semibold text-sm active:scale-95 shadow-lg shadow-indigo-900/40"
+              onClick={handleFlip}
+              disabled={isFlipping}
+              className="min-h-[48px] px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all flex items-center gap-2 font-semibold text-sm active:scale-95 shadow-lg shadow-indigo-900/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:active:scale-100"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -122,7 +148,7 @@ export const Flashcard: React.FC<FlashcardProps> = ({
           <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-2 shrink-0">
             {/* Word + POS — min-w-0 lets this shrink so it never pushes the right side off-screen */}
             <div className="flex flex-col min-w-0 flex-1">
-              <h3 className="text-lg sm:text-xl font-bold text-white capitalize break-all sm:break-words leading-snug">{wordObj.word}</h3>
+              <h3 className="text-3xl sm:text-5xl font-extrabold text-white capitalize break-words hyphens-auto leading-tight">{wordObj.word}</h3>
               {wordObj.part_of_speech && (
                 <span className="mt-1 self-start text-xs font-bold uppercase tracking-widest text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-md">
                   {wordObj.part_of_speech}
@@ -149,26 +175,26 @@ export const Flashcard: React.FC<FlashcardProps> = ({
           </div>
 
           {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-8 pb-28">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8">
             {/* Definition */}
-            <p className="text-base text-slate-300 font-medium leading-relaxed mb-3 pt-2">
+            <p className="text-base text-slate-300 font-medium leading-relaxed p-3 sm:p-5 mb-0 pt-2">
               {wordObj.definition}
             </p>
 
             {/* Context sentence */}
             {wordObj.context && (
-              <p className="text-sm italic text-slate-500 mb-4 border-l-2 border-slate-600 pl-3">
+              <p className="text-sm italic text-slate-500 mt-4 sm:mt-8 p-3 sm:p-5 border-l-2 border-slate-600">
                 "{wordObj.context}"
               </p>
             )}
 
             {/* Memory Hooks */}
             {wordObj.word_connections && (
-              <div className="pt-5 border-t border-slate-700/50">
-                <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-3 font-bold">Memory Hooks</p>
+              <div className="mt-4 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-700/50 flex flex-col gap-3 sm:gap-6">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-0 -mb-1 sm:-mb-3">Memory Hooks</p>
 
                 {wordObj.word_connections.synonyms?.length > 0 && (
-                  <div className="mb-3">
+                  <div>
                     <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5 font-bold">Synonyms</p>
                     <div className="flex flex-wrap gap-1.5">
                       {wordObj.word_connections.synonyms.map((s, i) => (
@@ -179,7 +205,7 @@ export const Flashcard: React.FC<FlashcardProps> = ({
                 )}
 
                 {wordObj.word_connections.antonyms?.length > 0 && (
-                  <div className="mb-3">
+                  <div>
                     <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5 font-bold">Antonyms</p>
                     <div className="flex flex-wrap gap-1.5">
                       {wordObj.word_connections.antonyms.map((a, i) => (
@@ -191,7 +217,7 @@ export const Flashcard: React.FC<FlashcardProps> = ({
 
                 {/* SPOILER LOCK: Only renders if isAdvancedPhase is true */}
                 {isAdvancedPhase && wordObj.word_connections?.collocations && wordObj.word_connections.collocations.length > 0 && (
-                  <div className="mb-3">
+                  <div>
                     <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5 font-bold">Collocations</p>
                     <div className="flex flex-wrap gap-1.5">
                       {wordObj.word_connections.collocations.map((collocation, idx) => (
@@ -216,7 +242,7 @@ export const Flashcard: React.FC<FlashcardProps> = ({
           </div>
 
           {/* ── Sticky Footer (Back) ── */}
-          <div className="absolute bottom-0 left-0 w-full p-4 bg-slate-900/95 backdrop-blur-md border-t border-slate-700/50 flex justify-center gap-4 z-10 sm:rounded-b-2xl">
+          <div className="flex-shrink-0 w-full p-4 bg-slate-900 border-t border-slate-700 flex justify-center gap-4 z-10 sm:rounded-b-2xl">
             {onPlayAudio && (
               <button
                 onClick={() => onPlayAudio(wordObj.word)}
@@ -227,8 +253,9 @@ export const Flashcard: React.FC<FlashcardProps> = ({
               </button>
             )}
             <button
-              onClick={() => setIsFlipped(false)}
-              className="min-h-[48px] px-6 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white transition-all flex items-center gap-2 font-semibold text-sm active:scale-95"
+              onClick={handleFlip}
+              disabled={isFlipping}
+              className="min-h-[48px] px-6 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white transition-all flex items-center gap-2 font-semibold text-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:active:scale-100"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

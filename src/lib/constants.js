@@ -1,4 +1,5 @@
 export const AXIOM_SUBJECTS = [
+    { name: 'News', icon: '📰' },
     { name: 'Science', icon: '🔬' },
     { name: 'Technology', icon: '💻' },
     { name: 'Psychology', icon: '🧠' },

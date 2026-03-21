@@ -113,13 +113,31 @@ export default function Dojo({ session }) {
         fetchDiagnostics();
     }, [practiceBatch.length, isSessionComplete, session, loading]);
 
-    // Auto-Save Session Progress removed per user request
+    // Auto-Save Session Progress
+    useEffect(() => {
+        if (practiceBatch.length === 0 && masterBatch.length === 0) return;
+        if (isSessionComplete) return;
+
+        const sessionState = {
+            practiceBatch,
+            masterBatch,
+            originalBatchCount,
+            currentIndex,
+            currentSectionIndex,
+            totalSections,
+            currentPhase,
+            phase2Answers,
+            timestamp: new Date().getTime()
+        };
+        localStorage.setItem('dojo_session_state', JSON.stringify(sessionState));
+    }, [practiceBatch, masterBatch, originalBatchCount, currentIndex, currentSectionIndex, totalSections, currentPhase, phase2Answers, isSessionComplete]);
 
     const loadNextBucket = (remainingWords) => {
         if (!remainingWords || remainingWords.length === 0) {
             setPracticeBatch([]);
             setMasterBatch([]);
             setIsSessionComplete(true);
+            localStorage.removeItem('dojo_session_state');
             return;
         }
 
@@ -210,7 +228,38 @@ export default function Dojo({ session }) {
             setLoading(false);
             return;
         }
-        fetchDojoWords();
+
+        const initializeSession = async () => {
+            const savedStateStr = localStorage.getItem('dojo_session_state');
+            if (savedStateStr) {
+                try {
+                    const savedState = JSON.parse(savedStateStr);
+                    const now = new Date().getTime();
+                    // 24 hours expiration safeguard
+                    if (now - savedState.timestamp < 24 * 60 * 60 * 1000) {
+                        setPracticeBatch(savedState.practiceBatch || []);
+                        setMasterBatch(savedState.masterBatch || []);
+                        setOriginalBatchCount(savedState.originalBatchCount || 0);
+                        setCurrentIndex(savedState.currentIndex || 0);
+                        setCurrentSectionIndex(savedState.currentSectionIndex || 1);
+                        setTotalSections(savedState.totalSections || 1);
+                        setCurrentPhase(savedState.currentPhase || 0);
+                        setPhase2Answers(savedState.phase2Answers || {});
+                        setLoading(false);
+                        return; // Successfully restored!
+                    } else {
+                        localStorage.removeItem('dojo_session_state');
+                    }
+                } catch (e) {
+                    console.error("Failed to parse saved Dojo session", e);
+                    localStorage.removeItem('dojo_session_state');
+                }
+            }
+            
+            await fetchDojoWords();
+        };
+
+        initializeSession();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session]);
 
@@ -311,6 +360,7 @@ export default function Dojo({ session }) {
         playQuitSound();
         setPracticeBatch([]);
         setCurrentIndex(0);
+        localStorage.removeItem('dojo_session_state');
         window.location.replace('/library');
     };
 
@@ -497,26 +547,48 @@ export default function Dojo({ session }) {
 
     if (!isSessionComplete && (!practiceBatch || practiceBatch.length === 0)) {
         return (
-            <div className="max-w-4xl mx-auto p-6">
-                <div className="bg-white dark:bg-slate-800 p-12 rounded-3xl text-center shadow-lg border border-slate-100 dark:border-slate-700 transition-colors">
-                    <span className="text-6xl mb-6 block">🏆</span>
-                    <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-4">You are all caught up!</h2>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium text-lg max-w-lg mx-auto mb-8 leading-relaxed">
-                        Incredible work. Your recently trained words are resting right now to build your long-term memory. Take a break, or read a new Article to discover more vocabulary.
+            <div className="max-w-4xl mx-auto p-6 flex flex-col items-center justify-center min-h-[70vh]">
+                <div className="bg-slate-900/80 backdrop-blur-xl p-10 md:p-12 rounded-3xl text-center shadow-2xl shadow-black/50 border border-slate-800 transition-all w-full max-w-md">
+                    <span className="text-6xl mb-6 block drop-shadow-2xl">🏆</span>
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-3">
+                        {!diagnosticStats || diagnosticStats.totalWords === 0 
+                            ? "Your Dojo is Empty" 
+                            : diagnosticStats.masteredWords === diagnosticStats.totalWords 
+                                ? "Complete Mastery!" 
+                                : "You are all caught up!"}
+                    </h2>
+                    <p className="text-slate-400 text-sm leading-relaxed max-w-sm mx-auto mb-2">
+                        {!diagnosticStats || diagnosticStats.totalWords === 0 
+                            ? "You haven't added any words to your Vault yet. Head over to the reading section to discover and save your first vocabulary words."
+                            : diagnosticStats.masteredWords === diagnosticStats.totalWords 
+                                ? "Incredible work. You have fully mastered every single word in your Vault! Read a new Article to find more challenging vocabulary."
+                                : "Your words are currently resting to build your long-term memory. Take a break, or read a new Article to add more words to your queue."}
                     </p>
 
                     {diagnosticStats && (
-                        <div className="max-w-xs mx-auto mb-8 bg-slate-900 border border-slate-700 rounded-xl p-5 font-mono text-sm text-left text-green-400 shadow-inner">
-                            <p className="font-bold text-slate-300 mb-3 border-b border-slate-700 pb-2">{`> [SYSTEM DIAGNOSTICS]`}</p>
-                            <p className="mb-1">Total Vault Words: <span className="text-white float-right">{diagnosticStats.totalWords}</span></p>
-                            <p className="mb-1">Mastered (Hidden): <span className="text-white float-right">{diagnosticStats.masteredWords}</span></p>
-                            <p className="mb-1">On 12h Cooldown (Hidden): <span className="text-white float-right">{diagnosticStats.cooldownWords}</span></p>
-                            <p className="mt-3 text-orange-400 font-bold border-t border-slate-800 pt-3">Playable Now: <span className="float-right">0</span></p>
+                        <div className="grid grid-cols-2 gap-4 w-full mt-6 mb-8">
+                            <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 flex flex-col items-center justify-center transition-all hover:bg-slate-800/60 shadow-inner">
+                                <span className="text-2xl font-black text-slate-300">{diagnosticStats.totalWords}</span>
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1 text-center leading-tight">Total Words</span>
+                            </div>
+                            <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 flex flex-col items-center justify-center transition-all hover:bg-slate-800/60 shadow-inner">
+                                <span className="text-2xl font-black text-emerald-400">{diagnosticStats.masteredWords}</span>
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1 text-center leading-tight">Mastered</span>
+                            </div>
+                            <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 flex flex-col items-center justify-center transition-all hover:bg-slate-800/60 shadow-inner">
+                                <span className="text-2xl font-black text-amber-400">{diagnosticStats.cooldownWords}</span>
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1 text-center leading-tight">On Cooldown</span>
+                            </div>
+                            <div className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 flex flex-col items-center justify-center transition-all hover:bg-slate-800/60 shadow-inner">
+                                <span className="text-2xl font-black text-orange-500">0</span>
+                                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1 text-center leading-tight">Playable Now</span>
+                            </div>
                         </div>
                     )}
+                    
                     <button
                         onClick={() => { playClickSound(); window.location.href = '/'; }}
-                        className="bg-orange-500 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-orange-600 hover:-translate-y-1 transition-all shadow-lg hover:shadow-orange-500/40"
+                        className="w-full bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:-translate-y-0.5"
                     >
                         Browse Articles
                     </button>
@@ -563,97 +635,110 @@ export default function Dojo({ session }) {
                 </div>
             )}
 
-            <div className="bg-surface p-10 rounded-[2.5rem] shadow-xl border border-border mb-8 max-w-2xl mx-auto relative overflow-hidden group transition-colors duration-300">
+            <div className="bg-surface p-6 sm:p-10 rounded-3xl sm:rounded-[2.5rem] shadow-xl border border-border mb-8 max-w-2xl mx-auto relative overflow-hidden group transition-colors duration-300 h-[80vh] sm:h-auto min-h-[500px] flex flex-col">
                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-orange-400 to-red-500 opacity-80 group-hover:opacity-100 transition-opacity"></div>
 
                 {currentPhase === 0 && (
-                    <div className="flex flex-col items-center justify-center space-y-8 py-4">
-                        <span className="text-xs font-black text-blue-500 uppercase tracking-[0.2em] block mb-2">Phase 0: Memory Encoding</span>
+                    <div className="flex flex-col flex-1 w-full h-full overflow-hidden">
+                        {/* Header Zone */}
+                        <div className="flex-shrink-0 flex flex-col items-center mb-4 sm:mb-6 pt-2">
+                            <span className="text-xs font-black text-blue-500 uppercase tracking-[0.2em] block mb-2">Phase 0: Memory Encoding</span>
 
-                        <div className="flex flex-row items-center justify-between w-full gap-3 px-4 sm:px-8">
-                            <h2 className="flex-1 min-w-0 text-3xl sm:text-5xl font-black text-slate-800 dark:text-white capitalize tracking-tight text-left sm:text-center break-all sm:break-words">
-                                {currentItem.word}
-                            </h2>
-                            <button
-                                onClick={() => {
-                                    const utterance = new SpeechSynthesisUtterance(currentItem.word);
-                                    utterance.lang = 'en-US';
-                                    window.speechSynthesis.speak(utterance);
-                                }}
-                                className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full hover:bg-blue-100 dark:hover:bg-slate-600 hover:text-blue-600 transition-colors shadow-sm"
-                                title="Pronounce"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                                    <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z" />
-                                    <path d="M15.932 7.757a.75.75 0 011.061 0 5.25 5.25 0 010 7.424.75.75 0 11-1.06-1.06 3.75 3.75 0 000-5.304.75.75 0 010-1.06z" />
-                                </svg>
-                            </button>
+                            <div className="flex flex-row items-center justify-center w-full gap-3 px-2 sm:px-8">
+                                <h2 className="flex-1 min-w-0 text-2xl sm:text-5xl font-black text-slate-800 dark:text-white capitalize tracking-tight text-center break-words hyphens-auto">
+                                    {currentItem.word}
+                                </h2>
+                                <button
+                                    onClick={() => {
+                                        const utterance = new SpeechSynthesisUtterance(currentItem.word);
+                                        utterance.lang = 'en-US';
+                                        window.speechSynthesis.speak(utterance);
+                                    }}
+                                    className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full hover:bg-blue-100 dark:hover:bg-slate-600 hover:text-blue-600 transition-colors shadow-sm"
+                                    title="Pronounce"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 sm:w-6 sm:h-6">
+                                        <path d="M13.5 4.06c0-1.336-1.616-2.005-2.56-1.06l-4.5 4.5H4.508c-1.141 0-2.318.664-2.66 1.905A9.76 9.76 0 001.5 12c0 .898.121 1.768.35 2.595.341 1.24 1.518 1.905 2.659 1.905h1.93l4.5 4.5c.945.945 2.561.276 2.561-1.06V4.06zM18.584 5.106a.75.75 0 011.06 0c3.808 3.807 3.808 9.98 0 13.788a.75.75 0 11-1.06-1.06 8.25 8.25 0 000-11.668.75.75 0 010-1.06z" />
+                                        <path d="M15.932 7.757a.75.75 0 011.061 0 5.25 5.25 0 010 7.424.75.75 0 11-1.06-1.06 3.75 3.75 0 000-5.304.75.75 0 010-1.06z" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
 
-                        {!isRevealed ? (
-                            <button
-                                onClick={() => setIsRevealed(true)}
-                                className="px-8 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xl rounded-2xl shadow-lg hover:shadow-blue-500/40 transition-all active:scale-95"
-                            >
-                                Reveal Meaning
-                            </button>
-                        ) : (
-                            <div className="w-full text-left space-y-6 animate-fade-in">
-                                <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-100 dark:border-slate-700 rounded-2xl">
-                                    {currentItem.category && (
-                                        <span className="inline-block px-3 py-1 mb-3 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-200 dark:bg-slate-700 rounded-full uppercase tracking-wider">
-                                            {currentItem.category}
-                                        </span>
-                                    )}
-                                    <p className="text-xl font-medium text-slate-800 dark:text-slate-200 leading-relaxed mb-4">
-                                        <span className="font-bold text-slate-400 text-sm block uppercase tracking-wider mb-2">Definition</span>
-                                        {currentItem.definition}
-                                    </p>
+                        {/* Body Zone (Scrollable) */}
+                        <div className="flex-1 overflow-y-auto w-full px-1 sm:px-4 custom-scrollbar">
+                            {!isRevealed ? (
+                                <div className="h-full flex items-center justify-center">
+                                    <button
+                                        onClick={() => setIsRevealed(true)}
+                                        className="px-8 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-xl rounded-2xl shadow-lg hover:shadow-blue-500/40 transition-all active:scale-95"
+                                    >
+                                        Reveal Meaning
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="w-full text-left space-y-4 sm:space-y-6 animate-fade-in pb-4">
+                                    <div className="p-4 sm:p-6 bg-slate-50 dark:bg-slate-800/50 border-2 border-slate-100 dark:border-slate-700 rounded-2xl">
+                                        {currentItem.category && (
+                                            <span className="inline-block px-2 py-1 sm:px-3 sm:py-1 mb-2 sm:mb-3 text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-200 dark:bg-slate-700 rounded-full uppercase tracking-wider">
+                                                {currentItem.category}
+                                            </span>
+                                        )}
+                                        <p className="text-lg sm:text-xl font-medium text-slate-800 dark:text-slate-200 leading-relaxed mb-3 sm:mb-4">
+                                            <span className="font-bold text-slate-400 text-[10px] sm:text-sm block uppercase tracking-wider mb-1 sm:mb-2">Definition</span>
+                                            {currentItem.definition}
+                                        </p>
 
-                                    {currentItem.context_sentence && (
-                                        <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-                                            <span className="font-bold text-slate-400 text-sm block uppercase tracking-wider mb-2">Example Sentence</span>
-                                            <div className="pl-4 border-l-4 border-indigo-500">
-                                                <p className="text-lg text-slate-600 dark:text-slate-400 italic">
-                                                    "{currentItem.context_sentence}"
-                                                </p>
+                                        {currentItem.context_sentence && (
+                                            <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-slate-200 dark:border-slate-700">
+                                                <span className="font-bold text-slate-400 text-[10px] sm:text-sm block uppercase tracking-wider mb-2">Example Sentence</span>
+                                                <div className="pl-3 sm:pl-4 border-l-4 border-indigo-500">
+                                                    <p className="text-base sm:text-lg text-slate-600 dark:text-slate-400 italic">
+                                                        "{currentItem.context_sentence}"
+                                                    </p>
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {/* EXTRACTION HOOKS INJECTION: Phase 0 Memory Encoding */}
-                                    {currentItem.word_connections && (
-                                        <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-                                            <span className="font-bold text-slate-400 text-sm block uppercase tracking-wider mb-3">Memory Hooks</span>
-                                            <div className="flex flex-col gap-3">
-                                                {currentItem.word_connections.synonyms?.length > 0 && (
-                                                    <div className="flex items-center flex-wrap gap-2">
-                                                        <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mr-1">Synonyms:</span>
-                                                        {currentItem.word_connections.synonyms.map(syn => (
-                                                            <span key={syn} className="px-2.5 py-1 text-xs font-medium rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                                                                {syn}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                {/* NUCLEAR LOCK: Only render if we can prove the phase is >= 3 */}
-                                                {Number(currentPhase) >= 3 && currentItem.word_connections?.collocations?.length > 0 ? (
-                                                    <div className="mt-6 pt-6 border-t border-slate-700/50">
-                                                        <h4 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Collocations</h4>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {currentItem.word_connections.collocations.map((collocation, idx) => (
-                                                                <span key={idx} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 break-words">
-                                                                    {collocation}
+                                        {/* EXTRACTION HOOKS INJECTION: Phase 0 Memory Encoding */}
+                                        {currentItem.word_connections && (
+                                            <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-slate-200 dark:border-slate-700">
+                                                <span className="font-bold text-slate-400 text-[10px] sm:text-sm block uppercase tracking-wider mb-2 sm:mb-3">Memory Hooks</span>
+                                                <div className="flex flex-col gap-2 sm:gap-3">
+                                                    {currentItem.word_connections.synonyms?.length > 0 && (
+                                                        <div className="flex items-center flex-wrap gap-1.5 sm:gap-2">
+                                                            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mr-1">Synonyms:</span>
+                                                            {currentItem.word_connections.synonyms.map(syn => (
+                                                                <span key={syn} className="px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-medium rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                                                                    {syn}
                                                                 </span>
                                                             ))}
                                                         </div>
-                                                    </div>
-                                                ) : null}
+                                                    )}
+                                                    {/* NUCLEAR LOCK: Only render if we can prove the phase is >= 3 */}
+                                                    {Number(currentPhase) >= 3 && currentItem.word_connections?.collocations?.length > 0 ? (
+                                                        <div className="mt-3 sm:mt-6 pt-3 sm:pt-6 border-t border-slate-700/50">
+                                                            <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 mb-2 sm:mb-3 uppercase tracking-wider">Collocations</h4>
+                                                            <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                                                                {currentItem.word_connections.collocations.map((collocation, idx) => (
+                                                                    <span key={idx} className="px-2 py-0.5 sm:px-3 sm:py-1.5 text-[10px] sm:text-xs font-medium rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 break-words">
+                                                                        {collocation}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                 </div>
+                            )}
+                        </div>
 
+                        {/* Footer Zone (Action Buttons) */}
+                        {isRevealed && (
+                            <div className="flex-shrink-0 w-full pt-4 mt-2 border-t border-slate-700/50">
                                 <button
                                     onClick={() => {
                                         if (currentIndex + 1 < practiceBatch.length) {
@@ -665,7 +750,7 @@ export default function Dojo({ session }) {
                                             setIsRevealed(false);
                                         }
                                     }}
-                                    className="w-full px-8 py-4 bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white font-extrabold text-xl rounded-2xl shadow-lg hover:shadow-orange-500/40 transition-all active:scale-95 flex justify-center items-center"
+                                    className="w-full px-8 py-3 sm:py-4 bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white font-extrabold text-lg sm:text-xl rounded-2xl shadow-lg hover:shadow-orange-500/40 transition-all active:scale-95 flex justify-center items-center"
                                 >
                                     Next Word
                                 </button>

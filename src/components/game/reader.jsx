@@ -604,7 +604,7 @@ You MUST return ONLY a raw, valid JSON object with NO markdown formatting, NO ba
                         className={`inline-block py-1 rounded transition-colors ${isCollected
                           ? 'bg-yellow-200 dark:bg-yellow-700/60 text-yellow-900 dark:text-yellow-100 border-b-2 border-yellow-400 dark:border-yellow-600 font-medium px-1'
                           : isPending
-                            ? 'bg-cyan-900/40 text-cyan-300 rounded px-1 transition-colors'
+                            ? 'bg-yellow-500/40 text-yellow-100 rounded-sm px-1 transition-colors'
                             : 'hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
                       >

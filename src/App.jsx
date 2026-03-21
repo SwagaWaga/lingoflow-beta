@@ -24,6 +24,7 @@ function App() {
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [currentView, setCurrentView] = useState('game');
   const [dailyStreak, setDailyStreak] = useState(0);
+  const [userRole, setUserRole] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
@@ -49,18 +50,29 @@ function App() {
       setSession(session);
       setIsCheckingSession(false);
       if (session?.user?.id) {
-        supabase.from('profiles').select('current_streak').eq('id', session.user.id).single()
-          .then(({ data }) => { if (data) setDailyStreak(data.current_streak || 0); });
+        supabase.from('profiles').select('current_streak, role').eq('id', session.user.id).single()
+          .then(({ data }) => { 
+            if (data) {
+              setDailyStreak(data.current_streak || 0);
+              setUserRole(data.role || 'guest');
+            }
+          });
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.user?.id) {
-        supabase.from('profiles').select('current_streak').eq('id', session.user.id).single()
-          .then(({ data }) => { if (data) setDailyStreak(data.current_streak || 0); });
+        supabase.from('profiles').select('current_streak, role').eq('id', session.user.id).single()
+          .then(({ data }) => { 
+            if (data) {
+              setDailyStreak(data.current_streak || 0);
+              setUserRole(data.role || 'guest');
+            }
+          });
       } else {
         setDailyStreak(0);
+        setUserRole(null);
       }
     });
 
@@ -77,7 +89,7 @@ function App() {
     setMobileMenuOpen(false);
   };
 
-  const isAdmin = session?.user?.email === 'abdutigr@gmail.com';
+  const isAdmin = userRole === 'admin';
   const navItems = [...NAV_ITEMS, ...(isAdmin ? [{ key: 'admin', label: '🔧 Admin' }] : [])];
 
   if (isCheckingSession) {

@@ -6,6 +6,17 @@ import { playClickSound, playQuitSound } from '../utils/playSound';
 
 export default function Admin({ session }) {
     const [adminTab, setAdminTab] = useState('article');
+    const [isSandboxActive, setIsSandboxActive] = useState(false);
+
+    // ── Evaluate New Account Sandboxing (24h cooldown) ──
+    useEffect(() => {
+        if (session?.user?.created_at) {
+            const ageMs = new Date() - new Date(session.user.created_at);
+            if (ageMs < 24 * 60 * 60 * 1000) {
+                setIsSandboxActive(true);
+            }
+        }
+    }, [session]);
 
     // ── Article state ──
     const [title, setTitle] = useState('');
@@ -23,6 +34,7 @@ export default function Admin({ session }) {
     const [editingArticleId, setEditingArticleId] = useState(null);
     const [articleList, setArticleList] = useState([]);
     const [articleListLoading, setArticleListLoading] = useState(false);
+    const [isFetchingNews, setIsFetchingNews] = useState(false);
 
 
     // ── Release Notes state ──
@@ -87,6 +99,11 @@ export default function Admin({ session }) {
 
     // ── Bulk Vocab Parser (pipe-delimited, 8 columns) ──
     const handleBulkParse = () => {
+        if (isSandboxActive) {
+            alert("⚠️ Account Sandbox Active: Bulk vocabulary imports are restricted for the first 24 hours of account creation to maintain database integrity.");
+            return;
+        }
+
         if (!bulkVocabContent.trim()) {
             alert("Please paste the bulk import content first.");
             return;
@@ -139,6 +156,11 @@ export default function Admin({ session }) {
     };
 
     const handleBulkQuizParse = () => {
+        if (isSandboxActive) {
+            alert("⚠️ Account Sandbox Active: Bulk imports are restricted for the first 24 hours.");
+            return;
+        }
+
         if (!quizContent.trim()) {
             alert("Please paste the bulk quiz import content first.");
             return;
@@ -227,6 +249,83 @@ export default function Admin({ session }) {
         setArticleListLoading(false);
     }, []);
 
+    const handleDeleteArticle = async (articleId) => {
+        if (!window.confirm("Are you sure you want to delete this article?")) return;
+
+        if (isSandboxActive) {
+            setStatusMessage('❌ Action denied: New accounts are restricted from deleting for 24 hours.');
+            return;
+        }
+
+        try {
+            const { error } = await supabase.from('articles').delete().eq('id', articleId);
+            if (error) throw error;
+            
+            // Update local state instantly:
+            setArticleList(prev => prev.filter(a => a.id !== articleId));
+            setStatusMessage('✅ Article deleted successfully!');
+        } catch (error) {
+            setStatusMessage(`❌ Error deleting article: ${error.message}`);
+        }
+    };
+
+    const handleFetchLiveNews = async () => {
+        if (isSandboxActive) {
+            setStatusMessage('❌ Action denied: New accounts are restricted from bulk fetching for 24 hours.');
+            return;
+        }
+
+        setIsFetchingNews(true);
+        setStatusMessage('');
+
+        try {
+            const { data, error } = await supabase.functions.invoke('fetch-news', {
+                body: { language: 'en' }
+            });
+
+            if (error) throw new Error(error.message);
+            if (!data?.success) {
+                if (data?.error?.includes("Missing GNEWS_API_KEY")) {
+                    throw new Error("Setup Required: Please add your GNews API Key to your Supabase Secrets.");
+                }
+                throw new Error(data?.error || 'Unknown Edge Function Error');
+            }
+            if (!data.articles || data.articles.length === 0) {
+                setStatusMessage('⚠️ No new articles found from GNews right now. Try again later.');
+                setIsFetchingNews(false);
+                return;
+            }
+
+            const inserts = data.articles.map(article => {
+                let readingText = article.content;
+                if (!readingText || readingText.toLowerCase().includes('paid')) {
+                    readingText = article.description;
+                }
+                if (!readingText) {
+                    readingText = article.title;
+                }
+
+                return {
+                    title: article.title,
+                    category: 'News',
+                    sub_subject: article.source?.name || 'General',
+                    difficulty_level: 'Intermediate',
+                    content_data: { segments: [{ id: 1, text: readingText, targetWord: "" }] }
+                };
+            });
+
+            const { error: insertError } = await supabase.from('articles').insert(inserts);
+            if (insertError) throw new Error(insertError.message);
+
+            setStatusMessage(`✅ Successfully fetched and added ${inserts.length} live news articles!`);
+            fetchArticleList();
+        } catch (err) {
+            setStatusMessage(`❌ Fetch failed: ${err.message}`);
+        } finally {
+            setIsFetchingNews(false);
+        }
+    };
+
     useEffect(() => { fetchArticleList(); }, [fetchArticleList]);
 
     const loadArticleForEdit = async (article) => {
@@ -256,6 +355,12 @@ export default function Admin({ session }) {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        if (isSandboxActive) {
+            setStatusMessage('❌ Action denied: New accounts are restricted from publishing for 24 hours.');
+            return;
+        }
+
         setIsSubmitting(true);
         setStatusMessage('');
 
@@ -333,6 +438,20 @@ export default function Admin({ session }) {
 
     return (
         <div className="w-full max-w-4xl mx-auto my-10 relative">
+
+            {/* ── Sandboxing Alert ── */}
+            {isSandboxActive && (
+                <div className="bg-amber-900/30 border border-amber-500/50 p-6 rounded-2xl mb-8 flex items-start gap-4 shadow-md text-amber-100 animate-fade-in">
+                    <div className="text-2xl mt-0.5">⚠️</div>
+                    <div>
+                        <h3 className="text-lg font-bold text-amber-400 mb-1">Account Validation Period</h3>
+                        <p className="text-sm leading-relaxed text-amber-200/90">
+                            Welcome! To protect platform integrity and prevent abuse, new accounts are placed in a temporary sandbox. 
+                            <strong> High-volume operations such as bulk importing and article publishing are restricted for 24 hours.</strong>
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* ── Admin Tab Switcher ── */}
             <div className="flex gap-2 mb-6">
@@ -489,6 +608,38 @@ export default function Admin({ session }) {
                         </div>
                     )}
 
+                    {/* Auto-Fetch Live News Section */}
+                    {!editingArticleId && (
+                        <div className="w-full bg-slate-900 border border-slate-700/60 rounded-2xl p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                    <span className="text-xl">📡</span> Auto-Fetch Live News
+                                </h3>
+                                <p className="text-sm text-slate-400 mt-1">
+                                    Pull the latest trending articles from the global news API directly into the public database.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => { playClickSound(); handleFetchLiveNews(); }}
+                                disabled={isFetchingNews || isSubmitting}
+                                className={`shrink-0 px-6 py-3 rounded-xl font-bold text-sm shadow-lg transition-all ${isFetchingNews
+                                    ? 'bg-blue-500/50 text-white cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white hover:-translate-y-0.5 hover:shadow-blue-500/30'
+                                    }`}
+                            >
+                                {isFetchingNews ? (
+                                    <span className="flex items-center gap-2">
+                                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                        Fetching...
+                                    </span>
+                                ) : "⚡ Fetch Live News"}
+                            </button>
+                        </div>
+                    )}
+
                     {/* Upload / Edit form */}
                     <div className="w-full bg-slate-900 rounded-2xl p-8 border border-slate-800 relative overflow-hidden shadow-2xl shadow-black/40">
                         <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-cyan-500 to-blue-600" />
@@ -573,106 +724,7 @@ export default function Admin({ session }) {
                                 ></textarea>
                             </div>
 
-                            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-inner">
-                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Vocabulary DNA Builder</label>
-
-                                <div className="mb-6 space-y-4">
-                                    <textarea
-                                        value={bulkVocabContent}
-                                        onChange={(e) => setBulkVocabContent(e.target.value)}
-                                        rows="4"
-                                        className="w-full p-3 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all shadow-sm"
-                                        placeholder="Word | Category | Subject | Definition | Synonyms (csv) | Antonyms (csv) | Collocations (csv) | Word Family"
-                                        disabled={isSubmitting}
-                                    ></textarea>
-                                    <div className="flex flex-wrap gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => { playClickSound(); handleBulkParse(); }}
-                                            disabled={isSubmitting || !bulkVocabContent.trim()}
-                                            className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl shadow hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm hover:-translate-y-0.5"
-                                        >
-                                            <span>⚡ Parse Bulk Import</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    {dnaEntries.map((entry, index) => (
-                                        <div key={index} className="flex flex-col gap-2 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-sm">
-                                            <div className="flex gap-3 items-center">
-                                                <input
-                                                    type="text"
-                                                    value={entry.word}
-                                                    onChange={(e) => handleEntryChange(index, "word", e.target.value)}
-                                                    placeholder="Target Word"
-                                                    className="flex-1 p-3 border border-slate-600 rounded-xl bg-slate-900 text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
-                                                    disabled={isSubmitting}
-                                                />
-                                                <select
-                                                    value={entry.category}
-                                                    onChange={(e) => handleEntryChange(index, "category", e.target.value)}
-                                                    className="w-40 p-3 border border-slate-600 rounded-xl bg-slate-900 text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm appearance-none"
-                                                    disabled={isSubmitting}
-                                                >
-                                                    <option value="Academic">Academic</option>
-                                                    <option value="Technical">Technical</option>
-                                                    <option value="Lexicon">Lexicon</option>
-                                                    <option value="Collocation">Collocation</option>
-                                                    <option value="Grammar">Grammar</option>
-                                                    <option value="Idiom">Idiom</option>
-                                                    <option value="Advanced">Advanced</option>
-                                                    <option value="Basic">Basic</option>
-                                                    <option value="Informal">Informal</option>
-                                                </select>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeEntry(index)}
-                                                    className="w-12 h-12 flex items-center justify-center bg-slate-800 text-red-500 hover:bg-red-900/40 hover:text-red-400 border border-slate-700 hover:border-red-700 rounded-xl font-bold transition-all shadow-sm shrink-0"
-                                                    title="Remove word"
-                                                    disabled={isSubmitting}
-                                                >
-                                                    ✕
-                                                </button>
-                                            </div>
-                                            <div className="relative">
-                                                <textarea
-                                                    value={entry.definition || ''}
-                                                    onChange={(e) => handleEntryChange(index, "definition", e.target.value)}
-                                                    placeholder="Definition (Optional)"
-                                                    rows="2"
-                                                    className="w-full p-3 pr-14 border border-slate-600 rounded-xl bg-slate-900 text-slate-100 placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
-                                                    disabled={isSubmitting}
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => fetchDefinition(index)}
-                                                    disabled={isSubmitting || loadingDefinitions[index]}
-                                                    className="absolute right-3 top-3 p-2 rounded-lg bg-indigo-900/30 text-indigo-400 hover:bg-indigo-900/50 transition-colors disabled:opacity-50"
-                                                    title="Generate dictionary definition"
-                                                >
-                                                    {loadingDefinitions[index] ? (
-                                                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                        </svg>
-                                                    ) : (
-                                                        "✨"
-                                                    )}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={addEntry}
-                                    className="mt-4 px-4 py-2 bg-slate-800 text-blue-400 hover:bg-slate-700 hover:text-blue-300 border border-slate-700 hover:border-blue-700 rounded-lg text-sm font-bold transition-all shadow-sm"
-                                    disabled={isSubmitting}
-                                >
-                                    + Add Word
-                                </button>
-                            </div>
+                            {/* Vocabulary DNA Builder Remounted / Removed */}
 
                             {/* Article Quiz Builder UI */}
                             <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-inner mt-6">
@@ -787,8 +839,8 @@ export default function Admin({ session }) {
                                 <button
                                     type="submit"
                                     onClick={playClickSound}
-                                    disabled={isSubmitting}
-                                    className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg transition-all duration-300 transform ${isSubmitting
+                                    disabled={isSubmitting || isSandboxActive}
+                                    className={`px-8 py-3 rounded-xl font-bold text-white shadow-lg transition-all duration-300 transform ${isSubmitting || isSandboxActive
                                         ? 'bg-blue-500/50 cursor-not-allowed scale-100'
                                         : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 hover:-translate-y-0.5 hover:shadow-blue-500/30'
                                         }`}
@@ -856,13 +908,22 @@ export default function Admin({ session }) {
                                                 <span className="text-xs text-slate-600">{art.difficulty_level}</span>
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={() => loadArticleForEdit(art)}
-                                            disabled={editingArticleId === art.id}
-                                            className="ml-4 flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all bg-slate-800 border-slate-700 text-slate-400 hover:bg-cyan-500/10 hover:border-cyan-500/40 hover:text-cyan-400 disabled:opacity-40 disabled:cursor-default"
-                                        >
-                                            {editingArticleId === art.id ? 'Editing…' : '✏️ Edit'}
-                                        </button>
+                                        <div className="flex shrink-0">
+                                            <button
+                                                onClick={() => loadArticleForEdit(art)}
+                                                disabled={editingArticleId === art.id}
+                                                className="ml-4 flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all bg-slate-800 border-slate-700 text-slate-400 hover:bg-cyan-500/10 hover:border-cyan-500/40 hover:text-cyan-400 disabled:opacity-40 disabled:cursor-default"
+                                            >
+                                                {editingArticleId === art.id ? 'Editing…' : '✏️ Edit'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteArticle(art.id); }}
+                                                className="ml-2 flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all bg-slate-800 border-slate-700 text-slate-400 hover:bg-red-500/10 hover:border-red-500/40 hover:text-red-400"
+                                            >
+                                                🗑️ Delete
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
